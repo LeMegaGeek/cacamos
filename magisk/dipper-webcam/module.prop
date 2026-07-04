@@ -1,0 +1,6 @@
+id=cacam_os_dipper_webcam
+name=CaCam OS MI8 Webcam
+version=0.1.0
+versionCode=1
+author=LeMegaGeek
+description=Enables Android DeviceAsWebcam UVC support on Xiaomi Mi 8 LineageOS test boots that use the CaCam OS UVC kernel.

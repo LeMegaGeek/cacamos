@@ -1,0 +1,6 @@
+id=cacam_os_cmi_webcam
+name=CaCam OS Mi 10 Pro Webcam
+version=0.2.3
+versionCode=5
+author=LeMegaGeek
+description=Enables Android DeviceAsWebcam UVC support on Xiaomi Mi 10 Pro LineageOS builds that already ship the kernel and service pieces.
