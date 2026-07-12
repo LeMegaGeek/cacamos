@@ -106,8 +106,20 @@ index 1f3ce01cad4a..fcaf9fff4537 100644
 +++ b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
 @@ -1784,6 +1784,19 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              SystemProperties.set(prop, val);
-         }
- 
+    }
+
+diff --git a/system/sepolicy/private/system_server.te b/system/sepolicy/private/system_server.te
+index 01097f2b1..a4be72ca1 100644
+--- a/system/sepolicy/private/system_server.te
++++ b/system/sepolicy/private/system_server.te
+@@ -901,6 +901,8 @@ get_prop(system_server, persist_sysui_ranking_update_prop)
+
+ # Read ro.tuner.lazyhal
+ get_prop(system_server, tuner_config_prop)
++# Read ro.usb.uvc.enabled for CaCamOS' automatic webcam default
++get_prop(system_server, usb_uvc_enabled_prop)
+ # Write tuner.server.enable
+ set_prop(system_server, tuner_server_ctl_prop)
 +        protected void prepareDeviceAsWebcamServiceIfNeeded(long functions) {
 +            if ((functions & UsbManager.FUNCTION_UVC) == 0) {
 +                return;

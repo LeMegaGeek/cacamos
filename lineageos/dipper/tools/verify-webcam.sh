@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-adb_bin="${ADB:-adb}"
+adb_base="${ADB:-adb}"
+adb_serial="${ADB_SERIAL:-}"
+
+if [[ -n "$adb_serial" ]]; then
+    adb_cmd=("$adb_base" -s "$adb_serial")
+else
+    adb_cmd=("$adb_base")
+fi
 
 require_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -10,8 +17,12 @@ require_cmd() {
     fi
 }
 
+adb_exec() {
+    "${adb_cmd[@]}" "$@"
+}
+
 adb_shell() {
-    "$adb_bin" shell "$@" 2>/dev/null || true
+    adb_exec shell "$@" 2>/dev/null || true
 }
 
 kernel_flag() {
@@ -19,10 +30,10 @@ kernel_flag() {
     adb_shell "zcat /proc/config.gz 2>/dev/null | grep -E '^${flag}=|^# ${flag} is not set' || true" | tr -d '\r'
 }
 
-require_cmd "$adb_bin"
+require_cmd "${adb_cmd[0]}"
 
 printf 'Waiting for Android device...\n'
-"$adb_bin" wait-for-device
+adb_exec wait-for-device
 
 device="$(adb_shell getprop ro.product.device | tr -d '\r')"
 model="$(adb_shell getprop ro.product.model | tr -d '\r')"

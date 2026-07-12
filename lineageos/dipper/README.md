@@ -126,6 +126,22 @@ v4l2-ctl --list-devices
 
 The MI8 must appear as a USB/video capture device.
 
+If `verify-webcam.sh` reports `ro.usb.uvc.enabled` as `unset`, the active ROM
+is not the patched CaCam OS LineageOS build. Flash a local patched build from your
+Lineage workspace and rerun verification:
+
+```bash
+cd /home/denis/Documents/Denis/dev/lineage-dipper
+ls -1 out/target/product/dipper/lineage-22.2-*-UNOFFICIAL-dipper.zip
+
+cd /home/denis/Documents/Denis/dev/CaCam/cacam-os/lineageos/dipper/tools
+./flash-verified-build.sh /home/denis/Documents/Denis/dev/lineage-dipper
+```
+
+If `flash-verified-build.sh` stops with `fastboot device not detected yet`, the phone is often in ADB sideload mode (`adb get-state` = `sideload`). In that case, run the same command after manually choosing "Yes" on the recovery sideload prompt; the script can also flash using `adb sideload` directly when this state is detected.
+
+If recovery stays in `sideload` for too long, reboot into fastboot manually with `Vol- + Power`, then rerun the same command.
+
 ## Kernel-Only Test Boot
 
 When a full LineageOS ROM build is not available yet, the CaCam OS UVC kernel

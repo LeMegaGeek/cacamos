@@ -8,6 +8,7 @@ check_only=0
 allow_low_memory=0
 reserve_cores=2
 cpu_set=""
+cpu_set_cores=0
 min_free_mem_mib=3072
 watchdog_interval_seconds=15
 go_memlimit_mib=24000
@@ -133,11 +134,18 @@ mem_available_kib="$(mem_kib MemAvailable)"
 swap_free_kib="$(mem_kib SwapFree)"
 load_1min="$(awk '{ print $1 }' /proc/loadavg)"
 cpu_count="$(getconf _NPROCESSORS_ONLN)"
+if (( cpu_count < 1 )); then
+    fail "cannot detect online CPU count"
+fi
 
-if [[ -z "$cpu_set" && "$cpu_count" -gt 1 ]]; then
+if [[ -z "$cpu_set" ]]; then
     if (( cpu_count > reserve_cores )); then
         last_cpu=$((cpu_count - reserve_cores - 1))
     else
+        last_cpu=$((cpu_count - 1))
+    fi
+
+    if (( last_cpu < 0 )); then
         last_cpu=0
     fi
 
@@ -146,6 +154,48 @@ if [[ -z "$cpu_set" && "$cpu_count" -gt 1 ]]; then
     else
         cpu_set="0-${last_cpu}"
     fi
+fi
+
+count_cpu_set_cores() {
+    local list="$1"
+    local field part count start end
+    count=0
+
+    IFS=',' read -r -a fields <<< "$list"
+    for part in "${fields[@]}"; do
+        if [[ "$part" == *-* ]]; then
+            start="${part%-*}"
+            end="${part#*-}"
+            if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ && "$start" -le "$end" ]]; then
+                count=$((count + end - start + 1))
+            else
+                count=0
+                break
+            fi
+        elif [[ "$part" =~ ^[0-9]+$ ]]; then
+            count=$((count + 1))
+        else
+            count=0
+            break
+        fi
+    done
+
+    if (( count <= 0 )); then
+        count="$cpu_count"
+    fi
+    printf '%d' "$count"
+}
+
+cpu_set_cores="$(count_cpu_set_cores "$cpu_set")"
+if (( cpu_set_cores > cpu_count )); then
+    cpu_set_cores="$cpu_count"
+fi
+if (( cpu_set_cores < 1 )); then
+    cpu_set_cores=1
+fi
+if (( jobs > cpu_set_cores )); then
+    printf 'NOTICE: %s\n' "Reducing build jobs from $jobs to $cpu_set_cores to stay within reserved cores."
+    jobs="$cpu_set_cores"
 fi
 
 printf 'Host resource preflight:\n'

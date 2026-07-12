@@ -70,6 +70,9 @@ ok "frameworks/base exposes USB_FUNCTION_UVC"
 grep -q 'ro.usb.uvc.enabled' "$lineage_root/system/sepolicy/private/property_contexts" ||
     fail "system sepolicy does not define ro.usb.uvc.enabled"
 ok "system sepolicy defines ro.usb.uvc.enabled"
+grep -q 'get_prop(system_server, usb_uvc_enabled_prop)' "$lineage_root/system/sepolicy/private/system_server.te" ||
+    fail "system_server sepolicy cannot read usb_uvc_enabled_prop"
+ok "system_server sepolicy can read usb_uvc_enabled_prop"
 
 grep -q 'GadgetFunction::UVC' "$usb_gadget_hal" || fail "QTI USB gadget HAL does not handle GadgetFunction::UVC"
 grep -q 'uvc.0' "$usb_gadget_hal" || fail "QTI USB gadget HAL does not link uvc.0"
