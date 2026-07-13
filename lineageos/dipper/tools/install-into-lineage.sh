@@ -32,6 +32,7 @@ kernel_fragment="$lineage_root/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xi
 
 if grep -q 'CaCamOsDeviceAsWebcamDipper' "$device_mk" &&
     grep -q 'ro.usb.uvc.enabled=true' "$device_mk" &&
+    grep -q 'persist.sys.usb.config=uvc,adb' "$device_mk" &&
     grep -q 'CONFIG_USB_CONFIGFS_F_UVC=y' "$kernel_fragment"; then
     printf 'CaCam OS dipper webcam addon already appears to be installed.\n'
     "$script_dir/verify-source-tree.sh" "$lineage_root"

@@ -2,10 +2,9 @@ diff --git a/device/xiaomi/dipper/device.mk b/device/xiaomi/dipper/device.mk
 index 570a4ab..a104934 100644
 --- a/device/xiaomi/dipper/device.mk
 +++ b/device/xiaomi/dipper/device.mk
-@@ -23,6 +23,18 @@ DEVICE_PACKAGE_OVERLAYS += \
+@@ -23,2 +23,14 @@ PRODUCT_PACKAGES += \
  PRODUCT_PACKAGES += \
      NoCutoutOverlay
- 
 +# CaCam OS webcam mode
 +#
 +# Expose the phone as a standard USB Video Class gadget. The actual camera
@@ -15,12 +14,9 @@ index 570a4ab..a104934 100644
 +    CaCamOsDeviceAsWebcamDipper \
 +    DeviceAsWebcam
 +
-+PRODUCT_VENDOR_PROPERTIES += \
+++PRODUCT_SYSTEM_PROPERTIES += \
++    persist.sys.usb.config=uvc,adb \
 +    ro.usb.uvc.enabled=true
-+
- # Permissions
- PRODUCT_COPY_FILES += \
-     frameworks/native/data/etc/android.hardware.nfc.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.xml \
 diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp
 new file mode 100644
 index 0000000..94ba2cc
@@ -104,15 +100,38 @@ diff --git a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceM
 index 1f3ce01cad4a..fcaf9fff4537 100644
 --- a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
 +++ b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
-@@ -1784,6 +1784,19 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1784,5 +1784,18 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              SystemProperties.set(prop, val);
-    }
-
+     }
++    protected void prepareDeviceAsWebcamServiceIfNeeded(long functions) {
++        if ((functions & UsbManager.FUNCTION_UVC) == 0) {
++            return;
++        }
++
++        Intent intent = new Intent("com.android.DeviceAsWebcam.action.PREPARE_UVC");
++        intent.setPackage("com.android.DeviceAsWebcam");
++        intent.addFlags(Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND
++                | Intent.FLAG_RECEIVER_FOREGROUND);
++        mContext.sendBroadcastAsUser(intent, UserHandle.ALL);
++        SystemClock.sleep(750);
++    }
++
+         protected String getSystemProperty(String prop, String def) {
+             return SystemProperties.get(prop, def);
+         }
+@@ -2575,6 +2588,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+                             LocalServices.getService(AdbManagerInternal.class)
+                                     .stopAdbdForTransport(AdbTransportType.USB);
+                     }
++                    prepareDeviceAsWebcamServiceIfNeeded(config);
+                     mUsbGadgetHal.setCurrentUsbFunctions(mCurrentRequest,
+                             config, chargingFunctions,
+                             SET_FUNCTIONS_TIMEOUT_MS - SET_FUNCTIONS_LEEWAY_MS, operationId);
 diff --git a/system/sepolicy/private/system_server.te b/system/sepolicy/private/system_server.te
 index 01097f2b1..a4be72ca1 100644
 --- a/system/sepolicy/private/system_server.te
 +++ b/system/sepolicy/private/system_server.te
-@@ -901,6 +901,8 @@ get_prop(system_server, persist_sysui_ranking_update_prop)
+@@ -901,5 +901,7 @@ get_prop(system_server, persist_sysui_ranking_update_prop)
 
  # Read ro.tuner.lazyhal
  get_prop(system_server, tuner_config_prop)
@@ -120,42 +139,18 @@ index 01097f2b1..a4be72ca1 100644
 +get_prop(system_server, usb_uvc_enabled_prop)
  # Write tuner.server.enable
  set_prop(system_server, tuner_server_ctl_prop)
-+        protected void prepareDeviceAsWebcamServiceIfNeeded(long functions) {
-+            if ((functions & UsbManager.FUNCTION_UVC) == 0) {
-+                return;
-+            }
-+
-+            Intent intent = new Intent("com.android.DeviceAsWebcam.action.PREPARE_UVC");
-+            intent.setPackage("com.android.DeviceAsWebcam");
-+            intent.addFlags(Intent.FLAG_RECEIVER_INCLUDE_BACKGROUND
-+                    | Intent.FLAG_RECEIVER_FOREGROUND);
-+            mContext.sendBroadcastAsUser(intent, UserHandle.ALL);
-+            SystemClock.sleep(750);
-+        }
-+
-         protected String getSystemProperty(String prop, String def) {
-             return SystemProperties.get(prop, def);
-         }
-@@ -2575,6 +2588,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
-                         LocalServices.getService(AdbManagerInternal.class)
-                                 .stopAdbdForTransport(AdbTransportType.USB);
-                     }
-+                    prepareDeviceAsWebcamServiceIfNeeded(config);
-                     mUsbGadgetHal.setCurrentUsbFunctions(mCurrentRequest,
-                             config, chargingFunctions,
-                             SET_FUNCTIONS_TIMEOUT_MS - SET_FUNCTIONS_LEEWAY_MS, operationId);
 diff --git a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 index 2af9999..2ad8ce7 100644
 --- a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 +++ b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 @@ -17,6 +17,7 @@
-              android:singleUser="true">
+             android:singleUser="true">
              <intent-filter>
                  <action android:name="android.hardware.usb.action.USB_STATE"/>
 +                <action android:name="com.android.DeviceAsWebcam.action.PREPARE_UVC"/>
              </intent-filter>
          </receiver>
- 
+
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
 index 2362b8d..3ae75d5 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
@@ -166,13 +161,13 @@ index 2362b8d..3ae75d5 100644
      private static final int NOTIF_ID = 1;
 +    private static final long SETUP_RETRY_TIMEOUT_MS = 5000;
 +    private static final long SETUP_RETRY_INTERVAL_MS = 100;
- 
+
      static {
          System.loadLibrary("jni_deviceAsWebcam");
 @@ -100,8 +102,8 @@ public abstract class DeviceAsWebcamFgService extends Service {
              mWebcamController = getWebcamController(mContext);
              mWebcamController.registerServiceInstance(this);
- 
+
 -            int res = setupServicesAndStartListening();
              startForegroundWithNotification();
 +            int res = setupServicesAndStartListeningWithRetry();
@@ -182,7 +177,7 @@ index 2362b8d..3ae75d5 100644
 @@ -156,6 +158,24 @@ public abstract class DeviceAsWebcamFgService extends Service {
          return setupServicesAndStartListeningNative(ignoredNodes);
      }
- 
+
 +    private int setupServicesAndStartListeningWithRetry() {
 +        long deadline = System.currentTimeMillis() + SETUP_RETRY_TIMEOUT_MS;
 +        int res;
@@ -215,9 +210,9 @@ index 15fd9f6..3f36401 100644
 +    public static final String ACTION_PREPARE_UVC =
 +            "com.android.DeviceAsWebcam.action.PREPARE_UVC";
      private static final boolean VERBOSE = Log.isLoggable(TAG, Log.VERBOSE);
- 
+
      static {
-@@ -40,18 +42,24 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
+@@ -40,21 +42,24 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
      @Override
      public final void onReceive(Context context, Intent intent) {
          final String action = intent.getAction();
@@ -234,17 +229,17 @@ index 15fd9f6..3f36401 100644
              Log.i(TAG, "UVC support isn't enabled. Returning early.");
              return;
          }
-+
+
 +        if (ACTION_PREPARE_UVC.equals(action)) {
 +            startForegroundService(context);
 +            return;
 +        }
 +
-+        Bundle extras = intent.getExtras();
+         Bundle extras = intent.getExtras();
 +        if (extras == null) {
 +            return;
 +        }
-+        boolean uvcSelected = extras.getBoolean(UsbManager.USB_FUNCTION_UVC);
+         boolean uvcSelected = extras.getBoolean(UsbManager.USB_FUNCTION_UVC);
          if (UsbManager.ACTION_USB_STATE.equals(action) && uvcSelected) {
              String[] ignoredNodes = IgnoredV4L2Nodes.getIgnoredNodes(context);
              if (!DeviceAsWebcamFgService.shouldStartServiceNative(ignoredNodes)) {
@@ -259,8 +254,8 @@ index 15fd9f6..3f36401 100644
 -                Log.v(TAG, "started foreground service");
 -            }
 +            startForegroundService(context);
-+        }
-+    }
+         }
+     }
 +
 +    private void startForegroundService(Context context) {
 +        Class<? extends DeviceAsWebcamFgService> klass = getForegroundServiceClass();
@@ -268,6 +263,6 @@ index 15fd9f6..3f36401 100644
 +        context.startForegroundService(fgIntent);
 +        if (VERBOSE) {
 +            Log.v(TAG, "started foreground service");
-         }
-     }
- 
++        }
++    }
+ }

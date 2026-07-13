@@ -6,6 +6,9 @@ Xiaomi Mi 8 (`dipper`) LineageOS integration for standard USB webcam mode.
 
 - Enables Android/LineageOS `DeviceAsWebcam`.
 - Advertises UVC support at boot with `ro.usb.uvc.enabled=true`.
+- Starts in Webcam mode by default on normal boot by setting
+  `persist.sys.usb.config=uvc,adb`, then pre-warming `DeviceAsWebcam` before the
+  host enumerates UVC.
 - Adds a `dipper` runtime resource overlay for future camera physical-ID tuning.
 - Tells DeviceAsWebcam to ignore MI8 internal V4L2 nodes that are not the UVC
   gadget (`sde_rotator`, camera request manager, sync and codec nodes). This

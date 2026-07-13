@@ -49,6 +49,8 @@ ok "DeviceAsWebcam is included in dipper PRODUCT_PACKAGES"
 
 grep -q 'ro.usb.uvc.enabled=true' "$device_mk" || fail "ro.usb.uvc.enabled=true is not set for dipper"
 ok "ro.usb.uvc.enabled=true is set for dipper"
+grep -q 'persist.sys.usb.config=uvc,adb' "$device_mk" || fail "persist.sys.usb.config=uvc,adb is not set for dipper"
+ok "persist.sys.usb.config=uvc,adb is set for dipper"
 
 grep -q 'CaCamOsDeviceAsWebcamDipper' "$device_mk" || fail "CaCam OS DeviceAsWebcam overlay is not included"
 [[ -f "$overlay_dir/Android.bp" ]] || fail "missing overlay Android.bp"
