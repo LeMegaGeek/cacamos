@@ -37,33 +37,33 @@ fragment.
 Prepare the LineageOS workspace from the CaCam repository:
 
 ```bash
-./cacam-os/tools/prepare-lineage-workspace.sh --init dipper /home/denis/Documents/Denis/dev/lineage-dipper
-./cacam-os/tools/prepare-lineage-workspace.sh --local-manifest dipper /home/denis/Documents/Denis/dev/lineage-dipper
-./cacam-os/tools/prepare-lineage-workspace.sh --sync dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh --init dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh --local-manifest dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh --sync dipper /home/denis/Documents/Denis/dev/lineage-dipper
 ```
 
 For a source-only webcam dependency sync before the full ROM sync:
 
 ```bash
-./cacam-os/tools/prepare-lineage-workspace.sh --sync-webcam-deps dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh --sync-webcam-deps dipper /home/denis/Documents/Denis/dev/lineage-dipper
 ```
 
 Recommended path from this CaCam repository:
 
 ```bash
-./cacam-os/lineageos/dipper/tools/install-into-lineage.sh /path/to/lineageos
+./lineageos/dipper/tools/install-into-lineage.sh /path/to/lineageos
 ```
 
 Or apply the patch manually from the root of a synced LineageOS tree:
 
 ```bash
-git apply /path/to/CaCam/cacam-os/lineageos/dipper/patches/0001-dipper-enable-cacam-os-webcam.patch
+git apply /path/to/cacamos/lineageos/dipper/patches/0001-dipper-enable-cacam-os-webcam.patch
 ```
 
 Verify the source tree before building:
 
 ```bash
-/path/to/CaCam/cacam-os/lineageos/dipper/tools/verify-source-tree.sh /path/to/lineageos
+/path/to/cacamos/lineageos/dipper/tools/verify-source-tree.sh /path/to/lineageos
 ```
 
 Then build. On Denis' current desktop, use the conservative wrapper first. It
@@ -72,18 +72,18 @@ for the desktop when `taskset` is available, and stops the build if available
 memory drops too low while it is running:
 
 ```bash
-/path/to/CaCam/cacam-os/lineageos/dipper/tools/build-lineage-gentle.sh \
+/path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
   --check-only
 
-/path/to/CaCam/cacam-os/lineageos/dipper/tools/build-lineage-gentle.sh \
+/path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper
 ```
 
 The default CPU reservation can be adjusted if needed:
 
 ```bash
-/path/to/CaCam/cacam-os/lineageos/dipper/tools/build-lineage-gentle.sh \
+/path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
   --reserve-cores 3
 ```
@@ -92,7 +92,7 @@ The runtime memory watchdog defaults to stopping the build below 3072 MiB of
 `MemAvailable`. To use a stricter threshold:
 
 ```bash
-/path/to/CaCam/cacam-os/lineageos/dipper/tools/build-lineage-gentle.sh \
+/path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
   --min-free-mem-mib 4096
 ```
@@ -110,8 +110,8 @@ mka bacon
 With the MI8 connected by ADB, run:
 
 ```bash
-./cacam-os/tools/audit-connected-device.sh
-./cacam-os/lineageos/dipper/tools/verify-webcam.sh
+./tools/audit-connected-device.sh
+./lineageos/dipper/tools/verify-webcam.sh
 ```
 
 On an unpatched official Nightly, the expected result is a useful failure:
@@ -134,7 +134,7 @@ Lineage workspace and rerun verification:
 cd /home/denis/Documents/Denis/dev/lineage-dipper
 ls -1 out/target/product/dipper/lineage-22.2-*-UNOFFICIAL-dipper.zip
 
-cd /home/denis/Documents/Denis/dev/CaCam/cacam-os/lineageos/dipper/tools
+cd /home/denis/Documents/Denis/dev/cacamos/lineageos/dipper/tools
 ./flash-verified-build.sh /home/denis/Documents/Denis/dev/lineage-dipper
 ```
 
@@ -149,7 +149,7 @@ can be packaged into a test `boot.img` that reuses the official LineageOS
 ramdisk:
 
 ```bash
-./cacam-os/lineageos/dipper/tools/build-uvc-boot-image.sh \
+./lineageos/dipper/tools/build-uvc-boot-image.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
   --kernel-image /home/denis/Documents/Denis/dev/lineage-dipper/out-kernel-cacam-dipper/arch/arm64/boot/Image.gz-dtb \
   --date 2026-06-27 \

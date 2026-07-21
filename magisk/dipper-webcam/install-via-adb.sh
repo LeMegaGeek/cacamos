@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/../../.." && pwd)"
+repo_root="$(cd "$script_dir/../.." && pwd)"
 module_version="$(awk -F= '$1=="version" {print $2}' "$script_dir/module.prop")"
 zip_path="$repo_root/dist/CaCamOS-dipper-webcam-magisk-$module_version.zip"
 remote_path="/data/local/tmp/CaCamOS-dipper-webcam-magisk-$module_version.zip"
@@ -57,4 +57,4 @@ printf 'Installing Magisk module...\n'
 root_shell "$su_bin" "$magisk_cmd --install-module '$remote_path'"
 
 printf '\nInstalled. Reboot with the CaCam OS dipper Magisk boot image, then run:\n'
-printf '  %s/cacam-os/lineageos/dipper/tools/verify-webcam.sh\n' "$repo_root"
+printf '  %s/lineageos/dipper/tools/verify-webcam.sh\n' "$repo_root"

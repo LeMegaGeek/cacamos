@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 adb_bin="${ADB:-adb}"
-out_dir="${1:-dist/cacam-os-audits}"
+out_dir="${1:-$project_root/dist/cacam-os-audits}"
 
 require_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -77,10 +78,10 @@ report="$out_dir/${timestamp}-${safe_device}-${serial}.txt"
     section "Recommended Verify Script"
     case "$device" in
         cmi)
-            printf './cacam-os/lineageos/cmi/tools/verify-webcam.sh\n'
+            printf './lineageos/cmi/tools/verify-webcam.sh\n'
             ;;
         dipper)
-            printf './cacam-os/lineageos/dipper/tools/verify-webcam.sh\n'
+            printf './lineageos/dipper/tools/verify-webcam.sh\n'
             ;;
         *)
             printf 'No CaCam OS verify script is registered for device=%s\n' "${device:-unknown}"

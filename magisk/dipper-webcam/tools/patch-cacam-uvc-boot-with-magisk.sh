@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 work_dir="$repo_root/dist/magisk-test"
 adb_bin="${ADB:-adb}"
 magisk_api="https://api.github.com/repos/topjohnwu/Magisk/releases/latest"

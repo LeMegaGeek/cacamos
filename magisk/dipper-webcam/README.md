@@ -28,21 +28,21 @@ The current test image was built from the installed LineageOS build:
 1. Patch the matching CaCam OS UVC boot image with Magisk on the MI8:
 
    ```bash
-   ./cacam-os/magisk/dipper-webcam/tools/patch-cacam-uvc-boot-with-magisk.sh \
+   ./magisk/dipper-webcam/tools/patch-cacam-uvc-boot-with-magisk.sh \
      dist/magisk-test/CaCamOS-dipper-uvc-boot-20260627.img
    ```
 
 2. Temporarily boot the patched image printed by the script:
 
    ```bash
-   ./cacam-os/magisk/dipper-webcam/tools/temporary-boot-patched.sh \
+   ./magisk/dipper-webcam/tools/temporary-boot-patched.sh \
      dist/magisk-test/CaCamOS-dipper-uvc-boot-20260627-magisk-v30.7-patched.img
    ```
 
 3. Once Android is up and ADB is authorized, install this module:
 
    ```bash
-   ./cacam-os/magisk/dipper-webcam/install-via-adb.sh
+   ./magisk/dipper-webcam/install-via-adb.sh
    ```
 
 4. Reboot again with the same temporary boot image so `post-fs-data.sh` runs
@@ -51,7 +51,7 @@ The current test image was built from the installed LineageOS build:
 5. Verify:
 
    ```bash
-   ./cacam-os/lineageos/dipper/tools/verify-webcam.sh
+   ./lineageos/dipper/tools/verify-webcam.sh
    ```
 
 Final success still requires host-side enumeration:

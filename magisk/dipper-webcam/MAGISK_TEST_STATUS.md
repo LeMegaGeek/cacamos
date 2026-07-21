@@ -122,7 +122,7 @@ not set `ro.usb.uvc.enabled=true`.
 The Magisk-patched MI8 boot image must be produced on the MI8 itself with:
 
 ```bash
-./cacam-os/magisk/dipper-webcam/tools/patch-cacam-uvc-boot-with-magisk.sh \
+./magisk/dipper-webcam/tools/patch-cacam-uvc-boot-with-magisk.sh \
   dist/magisk-test/CaCamOS-dipper-uvc-boot-20260627.img
 ```
 

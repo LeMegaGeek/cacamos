@@ -85,4 +85,4 @@ fi
 "$fastboot_bin" boot "$patched_img"
 
 echo "Boot command sent. Once Android is up, authorize ADB and run:"
-echo "  ./cacam-os/magisk/dipper-webcam/install-via-adb.sh"
+echo "  ./magisk/dipper-webcam/install-via-adb.sh"

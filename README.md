@@ -3,6 +3,9 @@
 CaCam OS is the ROM-side track for exposing supported Android phones as real
 USB webcams.
 
+The current Xiaomi Mi 8 runtime state and the next image-pipeline work are
+tracked in [`CURRENT_STATUS.md`](CURRENT_STATUS.md).
+
 Unlike the Play Store CaCam app, this path targets the Android USB gadget stack:
 the host computer should see a standard USB Video Class camera.
 
@@ -16,22 +19,22 @@ Current source targets:
 Use the LineageOS source addons for clean ROM builds:
 
 ```bash
-./cacam-os/lineageos/cmi/tools/install-into-lineage.sh /path/to/lineageos
-./cacam-os/lineageos/dipper/tools/install-into-lineage.sh /path/to/lineageos
+./lineageos/cmi/tools/install-into-lineage.sh /path/to/lineageos
+./lineageos/dipper/tools/install-into-lineage.sh /path/to/lineageos
 ```
 
 Prepare or inspect a LineageOS workspace with:
 
 ```bash
-./cacam-os/tools/prepare-lineage-workspace.sh dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh dipper /home/denis/Documents/Denis/dev/lineage-dipper
 ```
 
 For a real build workspace, initialize it, write the local manifest, then sync:
 
 ```bash
-./cacam-os/tools/prepare-lineage-workspace.sh --init dipper /home/denis/Documents/Denis/dev/lineage-dipper
-./cacam-os/tools/prepare-lineage-workspace.sh --local-manifest dipper /home/denis/Documents/Denis/dev/lineage-dipper
-./cacam-os/tools/prepare-lineage-workspace.sh --sync dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh --init dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh --local-manifest dipper /home/denis/Documents/Denis/dev/lineage-dipper
+./tools/prepare-lineage-workspace.sh --sync dipper /home/denis/Documents/Denis/dev/lineage-dipper
 ```
 
 The local manifest pins the matching LineageOS device tree, common tree, kernel
@@ -40,14 +43,14 @@ and TheMuppets vendor blobs for the selected device.
 For preflight checks without the full ROM tree, use:
 
 ```bash
-./cacam-os/tools/prepare-lineage-workspace.sh --sync-webcam-deps cmi /home/denis/Documents/Denis/dev/lineage-cmi
-./cacam-os/lineageos/cmi/tools/check-lineage-source-preflight.sh /home/denis/Documents/Denis/dev/lineage-cmi
+./tools/prepare-lineage-workspace.sh --sync-webcam-deps cmi /home/denis/Documents/Denis/dev/lineage-cmi
+./lineageos/cmi/tools/check-lineage-source-preflight.sh /home/denis/Documents/Denis/dev/lineage-cmi
 ```
 
 When a phone is connected, collect a non-destructive audit with:
 
 ```bash
-./cacam-os/tools/audit-connected-device.sh
+./tools/audit-connected-device.sh
 ```
 
 Use the Magisk modules only for diagnostics:
@@ -95,10 +98,7 @@ path and `ro.usb.uvc.enabled=true`. Live testing then found two ROM-side fixes:
 DeviceAsWebcam must ignore the MI8 internal V4L2 nodes, and it must be awake
 before the host probes the UVC gadget.
 
-The current `dipper` source addon includes those fixes plus the resource-limited
-build wrapper. Completion now requires a full LineageOS ROM build, flashing it
-on the MI8, then proving host-side UVC enumeration with:
-
-```bash
-v4l2-ctl --list-devices
-```
+The current `dipper` build now boots directly into Webcam mode, enumerates as a
+standard UVC device on Linux and streams continuously in OBS. The remaining
+work is image correctness: 90-degree rotation, a green edge band and incorrect
+colors are documented in `CURRENT_STATUS.md`.
