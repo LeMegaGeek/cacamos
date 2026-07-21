@@ -1,0 +1,13 @@
+diff --git a/system/sepolicy/private/system_server.te b/system/sepolicy/private/system_server.te
+index 01097f2b1a14e7b66b85163df607591170a85c5d..a4be72ca1789be16227b4f17f5e3d1c6f28d202c 100644
+--- a/system/sepolicy/private/system_server.te
++++ b/system/sepolicy/private/system_server.te
+@@ -901,6 +901,8 @@ get_prop(system_server, persist_sysui_ranking_update_prop)
+ 
+ # Read ro.tuner.lazyhal
+ get_prop(system_server, tuner_config_prop)
++# Read ro.usb.uvc.enabled for CaCamOS' automatic webcam default
++get_prop(system_server, usb_uvc_enabled_prop)
+ # Write tuner.server.enable
+ set_prop(system_server, tuner_server_ctl_prop)
+ 

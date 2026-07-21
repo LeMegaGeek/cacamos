@@ -27,7 +27,7 @@ If the phone is already rooted with Magisk, install the module ZIP from Magisk,
 or use:
 
 ```bash
-./cacam-os/magisk/cmi-webcam/install-via-adb.sh
+./magisk/cmi-webcam/install-via-adb.sh
 ```
 
 2. Reboot.
@@ -42,10 +42,10 @@ adb shell pm list packages com.android.DeviceAsWebcam
 
 ## Verify
 
-From the CaCam repository:
+From the CaCamOS repository root:
 
 ```bash
-./cacam-os/lineageos/cmi/tools/verify-webcam.sh
+./lineageos/cmi/tools/verify-webcam.sh
 ```
 
 On Linux host:
@@ -68,7 +68,7 @@ If the phone is not rooted yet, first obtain a matching `boot.img`.
 For the exact installed build:
 
 ```bash
-./cacam-os/magisk/cmi-webcam/tools/download-lineage-boot.sh --current
+./magisk/cmi-webcam/tools/download-lineage-boot.sh --current
 ```
 
 If LineageOS no longer publishes that build, this command refuses to continue.
@@ -79,26 +79,26 @@ To prepare the latest official LineageOS build and matching Magisk-patched boot
 image without flashing anything:
 
 ```bash
-./cacam-os/magisk/cmi-webcam/tools/prepare-lineage-magisk-test.sh --latest
+./magisk/cmi-webcam/tools/prepare-lineage-magisk-test.sh --latest
 ```
 
 Add `--with-rom` to also download and verify the full signed ROM ZIP that would
 be needed to update the phone:
 
 ```bash
-./cacam-os/magisk/cmi-webcam/tools/prepare-lineage-magisk-test.sh --latest --with-rom
+./magisk/cmi-webcam/tools/prepare-lineage-magisk-test.sh --latest --with-rom
 ```
 
 Then patch the boot image:
 
 ```bash
-./cacam-os/magisk/cmi-webcam/tools/patch-boot-with-magisk.sh dist/magisk-test/<boot>.img
+./magisk/cmi-webcam/tools/patch-boot-with-magisk.sh dist/magisk-test/<boot>.img
 ```
 
 For a non-destructive test, boot it temporarily:
 
 ```bash
-./cacam-os/magisk/cmi-webcam/tools/temporary-boot-patched.sh dist/magisk-test/<patched-boot>.img
+./magisk/cmi-webcam/tools/temporary-boot-patched.sh dist/magisk-test/<patched-boot>.img
 ```
 
 The temporary boot script refuses to continue when the patched image filename

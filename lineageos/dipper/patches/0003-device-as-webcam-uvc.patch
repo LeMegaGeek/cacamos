@@ -1,0 +1,508 @@
+diff --git a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
+index 2af999935683ce57d7d3ac60319d1ec15bc82139..d50a83e57607e55ce48152d7856a8b371707f1ac 100644
+--- a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
++++ b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
+@@ -14,9 +14,11 @@
+          android:label="@string/app_label">
+         <receiver android:name="com.android.deviceaswebcam.DeviceAsWebcamReceiverImpl"
+              android:exported="true"
++             android:permission="android.permission.MANAGE_USB"
+              android:singleUser="true">
+             <intent-filter>
+                 <action android:name="android.hardware.usb.action.USB_STATE"/>
++                <action android:name="com.android.DeviceAsWebcam.action.PREPARE_UVC"/>
+             </intent-filter>
+         </receiver>
+ 
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
+index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d23f1aed73 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
++++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
+@@ -44,12 +44,13 @@ constexpr uint32_t USB_PAYLOAD_TRANSFER_SIZE = 3072;
+ constexpr char kDeviceGlobPattern[] = "/dev/video*";
+ constexpr char kUsbPayloadTransferSizeProperty[] = "vendor.usb.uvc.payload_transfer_size";
+ 
+-// Taken from UVC UAPI. The kernel handles mapping these back to actual USB interfaces set up by the
+-// UVC gadget function.
++// Defaults for a pure UVC gadget. Composite USB configurations can shift the actual interface
++// numbers, so setup requests below update these values from the host-provided wIndex.
+ constexpr uint32_t CONTROL_INTERFACE_IDX = 0;
+ constexpr uint32_t STREAMING_INTERFACE_IDX = 1;
+ 
+ constexpr uint32_t FRAME_INTERVAL_NUM = 10'000'000;
++constexpr uint16_t UVC_STREAMING_CONTROL_UVC_1_5_LENGTH = 48;
+ 
+ namespace android {
+ namespace webcam {
+@@ -272,6 +273,37 @@ void UVCProvider::UVCDevice::getFormatFrames(ConfigFormat* format) {
+     }
+ }
+ 
++static ConfigFrame makeConfigFrame(uint32_t index, uint32_t width, uint32_t height) {
++    ConfigFrame frame{};
++    frame.index = index;
++    frame.width = width;
++    frame.height = height;
++    frame.intervals = {
++            166666,   // 60 fps
++            333333,   // 30 fps
++            666666,   // 15 fps
++            1000000,  // 10 fps
++            5000000,  // 2 fps
++    };
++    return frame;
++}
++
++static std::vector<ConfigFormat> getDefaultUvcFormats() {
++    ConfigFormat yuyv{};
++    yuyv.formatIndex = 0;
++    yuyv.fcc = V4L2_PIX_FMT_YUYV;
++    yuyv.frames.emplace_back(makeConfigFrame(/*index*/ 0, /*width*/ 640, /*height*/ 360));
++
++    ConfigFormat mjpeg{};
++    mjpeg.formatIndex = 1;
++    mjpeg.fcc = V4L2_PIX_FMT_MJPEG;
++    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 0, /*width*/ 640, /*height*/ 360));
++    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 1, /*width*/ 1280, /*height*/ 720));
++    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 2, /*width*/ 1920, /*height*/ 1080));
++
++    return {yuyv, mjpeg};
++}
++
+ std::vector<ConfigFormat> UVCProvider::UVCDevice::getFormats() {
+     std::vector<ConfigFormat> retVal;
+     for (uint32_t index = 0; true; ++index) {
+@@ -281,6 +313,11 @@ std::vector<ConfigFormat> UVCProvider::UVCDevice::getFormats() {
+         formatDesc.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+         int ret = ioctl(mUVCFd.get(), VIDIOC_ENUM_FMT, &formatDesc);
+         if (ret != 0) {
++            if (retVal.empty()) {
++                ALOGW("%s VIDIOC_ENUM_FMT unsupported by UVC gadget node, using defaults",
++                      __FUNCTION__);
++                return getDefaultUvcFormats();
++            }
+             return retVal;
+         }
+         if (formatDesc.index != index) {
+@@ -292,6 +329,11 @@ std::vector<ConfigFormat> UVCProvider::UVCDevice::getFormats() {
+         configFormat.formatIndex = formatDesc.index;  // TODO: Double check with jchowdhary@
+         configFormat.fcc = formatDesc.pixelformat;
+         getFormatFrames(&configFormat);
++        if (configFormat.frames.empty()) {
++            ALOGW("%s VIDIOC_ENUM_FRAMESIZES unsupported by UVC gadget node, using defaults",
++                  __FUNCTION__);
++            return getDefaultUvcFormats();
++        }
+         retVal.emplace_back(configFormat);
+     }
+ }
+@@ -309,10 +351,6 @@ UVCProvider::UVCDevice::UVCDevice(std::weak_ptr<UVCProvider> parent,
+                                   const std::unordered_set<std::string>& ignoredNodes) {
+     mParent = std::move(parent);
+ 
+-    // Initialize probe and commit controls with default values
+-    FormatTriplet defaultFormatTriplet(/*formatIndex*/ 1, /*frameSizeIndex*/ 1,
+-                                       /*frameInterval*/ 0);
+-
+     mVideoNode = getVideoNode(ignoredNodes);
+ 
+     if (mVideoNode.empty()) {
+@@ -325,7 +363,7 @@ UVCProvider::UVCDevice::UVCDevice(std::weak_ptr<UVCProvider> parent,
+               mVideoNode.c_str());
+         return;
+     }
+-    setStreamingControl(&mCommit, &defaultFormatTriplet);
++    resetStreamingControls();
+     mInited = true;
+ }
+ 
+@@ -371,9 +409,19 @@ bool UVCProvider::UVCDevice::isInited() const {
+ 
+ void UVCProvider::UVCDevice::processSetupControlEvent(const struct usb_ctrlrequest* control,
+                                                       struct uvc_request_data* resp) {
+-    // TODO(b/267794640): Support control requests
+-    resp->data[0] = 0x3;
+-    resp->length = control->wLength;
++    uint8_t requestType = control->bRequest;
++    if (requestType == UVC_GET_INFO) {
++        resp->data[0] = 0x0;
++        resp->length = 1;
++        return;
++    }
++
++    uint16_t responseLength = control->wLength;
++    uint16_t maxResponseLength = static_cast<uint16_t>(sizeof(resp->data));
++    if (responseLength > maxResponseLength) {
++        responseLength = maxResponseLength;
++    }
++    resp->length = responseLength;
+ }
+ 
+ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlrequest* request,
+@@ -382,12 +430,16 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+     uint8_t controlSelect = request->wValue >> 8;
+     if (controlSelect != UVC_VS_PROBE_CONTROL && controlSelect != UVC_VS_COMMIT_CONTROL) {
+         ALOGE("%s: control select %u is invalid", __FUNCTION__, controlSelect);
++        if (requestType == UVC_GET_INFO) {
++            response->data[0] = 0x0;
++            response->length = 1;
++        }
+         return;
+     }
+ 
+     struct uvc_streaming_control* ctrl =
+             reinterpret_cast<struct uvc_streaming_control*>(response->data);
+-    response->length = sizeof(struct uvc_streaming_control);
++    response->length = UVC_STREAMING_CONTROL_UVC_1_5_LENGTH;
+     FormatTriplet maxFormatTriplet(/*formatIndex*/ UINT8_MAX,
+                                    /*frameSizeIndex*/ UINT8_MAX,
+                                    /*frameInterval*/ UINT32_MAX);
+@@ -397,13 +449,13 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+     switch (requestType) {
+         case UVC_SET_CUR:
+             mCurrentControlState = controlSelect;
+-            // UVC 1.5 spec section 4.3.1
+-            response->length = 48;
+             break;
+         case UVC_GET_CUR:
+             if (controlSelect == UVC_VS_PROBE_CONTROL) {
++                ensureStreamingControl(&mProbe);
+                 memcpy(ctrl, &mProbe, sizeof(struct uvc_streaming_control));
+             } else {
++                ensureStreamingControl(&mCommit);
+                 memcpy(ctrl, &mCommit, sizeof(struct uvc_streaming_control));
+             }
+             break;
+@@ -418,9 +470,9 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+             memset(ctrl, 0, sizeof(struct uvc_streaming_control));
+             break;
+         case UVC_GET_LEN:
+-            response->data[0] = 0x00;
+             // UVC 1.5 spec section 4.3.1
+-            response->data[0] = 0x30;
++            response->data[0] = UVC_STREAMING_CONTROL_UVC_1_5_LENGTH & 0xff;
++            response->data[1] = UVC_STREAMING_CONTROL_UVC_1_5_LENGTH >> 8;
+             response->length = 2;
+             break;
+         case UVC_GET_INFO:
+@@ -437,18 +489,58 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+ void UVCProvider::UVCDevice::processSetupClassEvent(const struct usb_ctrlrequest* request,
+                                                     struct uvc_request_data* response) {
+     uint8_t interface = request->wIndex & 0xff;
+-    ALOGV("%s: Interface %u", __FUNCTION__, interface);
++    uint8_t entity = request->wIndex >> 8;
++    uint8_t requestType = request->bRequest;
++    uint8_t controlSelect = request->wValue >> 8;
++    ALOGV("%s: interface %u entity %u control %u", __FUNCTION__, interface, entity,
++          controlSelect);
+ 
+     if ((request->bRequestType & USB_RECIP_MASK) != USB_RECIP_INTERFACE) {
+         ALOGE("Invalid bRequestType byte %u", request->bRequestType);
+         return;
+     }
+ 
++    if (entity != 0) {
++        if (interface != mUVCProperties->controlInterfaceNumber) {
++            mUVCProperties->controlInterfaceNumber = interface;
++            mUVCProperties->streaming.interfaceNumber = interface + 1;
++        }
++        processSetupControlEvent(request, response);
++        return;
++    }
++
++    bool likelyVideoControlInterfaceRequest =
++            (controlSelect == UVC_VC_VIDEO_POWER_MODE_CONTROL ||
++             controlSelect == UVC_VC_REQUEST_ERROR_CODE_CONTROL) &&
++            requestType != UVC_GET_INFO && request->wLength <= 1;
++    if (interface == mUVCProperties->streaming.interfaceNumber &&
++        likelyVideoControlInterfaceRequest) {
++        mUVCProperties->controlInterfaceNumber = interface;
++        mUVCProperties->streaming.interfaceNumber = interface + 1;
++        processSetupControlEvent(request, response);
++        return;
++    }
++
+     if (interface == mUVCProperties->controlInterfaceNumber) {
+         processSetupControlEvent(request, response);
+-    } else if (interface == mUVCProperties->streaming.interfaceNumber) {
++        return;
++    }
++
++    if (interface != mUVCProperties->streaming.interfaceNumber &&
++        (controlSelect == UVC_VS_PROBE_CONTROL || controlSelect == UVC_VS_COMMIT_CONTROL)) {
++        mUVCProperties->streaming.interfaceNumber = interface;
++        if (interface > 0) {
++            mUVCProperties->controlInterfaceNumber = interface - 1;
++        }
++    }
++
++    if (interface == mUVCProperties->streaming.interfaceNumber) {
+         processSetupStreamingEvent(request, response);
++        return;
+     }
++
++    ALOGE("%s: unknown interface %u entity %u control %u", __FUNCTION__, interface, entity,
++          controlSelect);
+ }
+ 
+ void UVCProvider::UVCDevice::processSetupEvent(const struct usb_ctrlrequest* request,
+@@ -475,22 +567,29 @@ void UVCProvider::UVCDevice::processSetupEvent(const struct usb_ctrlrequest* req
+ void UVCProvider::UVCDevice::setStreamingControl(struct uvc_streaming_control* streamingControl,
+                                                  const FormatTriplet* req) {
+     // frame and format index start from 1.
+-    uint8_t chosenFormatIndex = req->formatIndex > mUVCProperties->streaming.formats.size()
++    uint8_t requestedFormatIndex = req->formatIndex == 0 ? 1 : req->formatIndex;
++    uint8_t chosenFormatIndex = requestedFormatIndex > mUVCProperties->streaming.formats.size()
+                                         ? mUVCProperties->streaming.formats.size()
+-                                        : req->formatIndex;
++                                        : requestedFormatIndex;
+     if (chosenFormatIndex <= 0) {
+         return;
+     }
+     const ConfigFormat& chosenFormat = mUVCProperties->streaming.formats[chosenFormatIndex - 1];
+-    uint8_t chosenFrameIndex = req->frameSizeIndex > chosenFormat.frames.size()
++    uint8_t requestedFrameIndex = req->frameSizeIndex == 0 ? 1 : req->frameSizeIndex;
++    uint8_t chosenFrameIndex = requestedFrameIndex > chosenFormat.frames.size()
+                                        ? chosenFormat.frames.size()
+-                                       : req->frameSizeIndex;
++                                       : requestedFrameIndex;
+     if (chosenFrameIndex <= 0) {
+         return;
+     }
+     ALOGV("%s: chosenFormatIndex %d chosenFrameIndex: %d", __FUNCTION__, chosenFormatIndex,
+             chosenFrameIndex);
+     const ConfigFrame& chosenFrame = chosenFormat.frames[chosenFrameIndex - 1];
++    if (chosenFrame.intervals.empty()) {
++        ALOGE("%s No frame intervals for format %u frame %u", __FUNCTION__, chosenFormatIndex,
++              chosenFrameIndex);
++        return;
++    }
+     uint32_t reqFrameInterval = req->frameInterval;
+     bool largerFound = false;
+     // Choose the first frame interval >= requested. Frame intervals are expected to be in
+@@ -539,6 +638,31 @@ void UVCProvider::UVCDevice::setStreamingControl(struct uvc_streaming_control* s
+     }
+ }
+ 
++bool UVCProvider::UVCDevice::isStreamingControlValid(
++        const struct uvc_streaming_control& streamingControl) const {
++    return streamingControl.bFormatIndex != 0 && streamingControl.bFrameIndex != 0 &&
++            streamingControl.dwFrameInterval != 0 &&
++            streamingControl.dwMaxVideoFrameSize != 0 &&
++            streamingControl.dwMaxPayloadTransferSize != 0;
++}
++
++void UVCProvider::UVCDevice::ensureStreamingControl(
++        struct uvc_streaming_control* streamingControl) {
++    if (isStreamingControlValid(*streamingControl)) {
++        return;
++    }
++    FormatTriplet defaultFormatTriplet(/*formatIndex*/ 1, /*frameSizeIndex*/ 1,
++                                       /*frameInterval*/ 0);
++    setStreamingControl(streamingControl, &defaultFormatTriplet);
++}
++
++void UVCProvider::UVCDevice::resetStreamingControls() {
++    FormatTriplet defaultFormatTriplet(/*formatIndex*/ 1, /*frameSizeIndex*/ 1,
++                                       /*frameInterval*/ 0);
++    setStreamingControl(&mProbe, &defaultFormatTriplet);
++    setStreamingControl(&mCommit, &defaultFormatTriplet);
++}
++
+ void UVCProvider::UVCDevice::commitControls() {
+     const ConfigFormat& commitFormat = mUVCProperties->streaming.formats[mCommit.bFormatIndex - 1];
+     const ConfigFrame& commitFrame = commitFormat.frames[mCommit.bFrameIndex - 1];
+@@ -693,15 +817,7 @@ void UVCProvider::UVCDevice::destroyBuffers(std::shared_ptr<Buffer>& consumerBuf
+ }
+ 
+ Status UVCProvider::UVCDevice::getFrameAndQueueBufferToGadgetDriver(bool firstBuffer) {
+-    // If first buffer, also call the STREAMON ioctl on uvc device
+     ALOGV("%s: E", __FUNCTION__);
+-    if (firstBuffer) {
+-        int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+-        if (ioctl(mUVCFd.get(), VIDIOC_STREAMON, &type) < 0) {
+-            ALOGE("%s: VIDIOC_STREAMON failed %s", __FUNCTION__, strerror(errno));
+-            return Status::ERROR;
+-        }
+-    }
+     Buffer* buffer = mBufferManager->getFilledBufferAndSwap();
+     struct v4l2_buffer v4L2Buffer = *(static_cast<V4L2Buffer*>(buffer)->getV4L2Buffer());
+     ALOGV("%s: got buffer, queueing it with index %u", __FUNCTION__, v4L2Buffer.index);
+@@ -710,22 +826,32 @@ Status UVCProvider::UVCDevice::getFrameAndQueueBufferToGadgetDriver(bool firstBu
+         ALOGE("%s: VIDIOC_QBUF failed on gadget driver: %s", __FUNCTION__, strerror(errno));
+         return Status::ERROR;
+     }
++
++    // Complete the host's SET_INTERFACE only after the first camera frame is queued. OBS starts
++    // its short capture timeout as soon as STREAMON returns, so enabling the endpoint earlier can
++    // make it reset the device before the camera has produced its first frame.
++    if (firstBuffer) {
++        int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
++        if (ioctl(mUVCFd.get(), VIDIOC_STREAMON, &type) < 0) {
++            ALOGE("%s: VIDIOC_STREAMON failed %s", __FUNCTION__, strerror(errno));
++            return Status::ERROR;
++        }
++    }
+     ALOGV("%s: X", __FUNCTION__);
+     return Status::OK;
+ }
+ 
+ void UVCProvider::UVCDevice::processStreamOffEvent() {
++    mFrameProvider.reset();
++
+     int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+     if (ioctl(mUVCFd.get(), VIDIOC_STREAMOFF, &type) < 0) {
+         ALOGE("%s: uvc gadget driver request to switch stream off failed %s", __FUNCTION__,
+               strerror(errno));
+-        return;
+     }
+ 
+-    mFrameProvider.reset();
+     mBufferManager.reset();
+-    memset(&mCommit, 0, sizeof(mCommit));
+-    memset(&mProbe, 0, sizeof(mProbe));
++    resetStreamingControls();
+     memset(&mV4l2Format, 0, sizeof(mV4l2Format));
+     mFps = 0;
+ }
+@@ -813,7 +939,10 @@ void UVCProvider::processUVCEvent() {
+             return;
+         case UVC_EVENT_DISCONNECT:
+             ALOGI("%s Disconnect event", __FUNCTION__);
+-            stopService();
++            // A cable disconnect does not remove the gadget node. Keep the listener alive so the
++            // same UVC function can answer control requests immediately after reconnection.
++            mUVCDevice->processStreamOffEvent();
++            mEpollW.modify(mUVCDevice->getUVCFd(), EPOLLPRI);
+             return;
+         case UVC_EVENT_SETUP:
+             ALOGV(" %s: Setup event ", __FUNCTION__);
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
+index b1343986a734bf17e021687732cb84a6bcf47703..f7ea74e4ef1a7c31db25f45dab3f1758b474c905 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
++++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
+@@ -157,6 +157,9 @@ class UVCProvider : public std::enable_shared_from_this<UVCProvider> {
+         Status openV4L2DeviceAndSubscribe(const std::string& videoNode);
+         void setStreamingControl(struct uvc_streaming_control* streamingControl,
+                                  const FormatTriplet* req);
++        bool isStreamingControlValid(const struct uvc_streaming_control& streamingControl) const;
++        void ensureStreamingControl(struct uvc_streaming_control* streamingControl);
++        void resetStreamingControls();
+         void commitControls();
+ 
+         std::shared_ptr<Buffer> mapBuffer(uint32_t i);
+diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
+index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..440dbfd8256c54a80e58a18f6caccab87c26681c 100644
+--- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
++++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
+@@ -47,6 +47,8 @@ public abstract class DeviceAsWebcamFgService extends Service {
+     private static final boolean VERBOSE = Log.isLoggable(TAG, Log.VERBOSE);
+     private static final String NOTIF_CHANNEL_ID = "WebcamService";
+     private static final int NOTIF_ID = 1;
++    private static final long SETUP_RETRY_TIMEOUT_MS = 5000;
++    private static final long SETUP_RETRY_INTERVAL_MS = 20;
+ 
+     static {
+         System.loadLibrary("jni_deviceAsWebcam");
+@@ -100,8 +102,8 @@ public abstract class DeviceAsWebcamFgService extends Service {
+             mWebcamController = getWebcamController(mContext);
+             mWebcamController.registerServiceInstance(this);
+ 
+-            int res = setupServicesAndStartListening();
+             startForegroundWithNotification();
++            int res = setupServicesAndStartListeningWithRetry();
+             // If `setupServicesAndStartListening` fails, we don't want to start the foreground
+             // service. However, Android expects a call to `startForegroundWithNotification` in
+             // `onStartCommand` and throws an exception if it isn't called. So, if the foreground
+@@ -156,6 +158,24 @@ public abstract class DeviceAsWebcamFgService extends Service {
+         return setupServicesAndStartListeningNative(ignoredNodes);
+     }
+ 
++    private int setupServicesAndStartListeningWithRetry() {
++        long deadline = System.currentTimeMillis() + SETUP_RETRY_TIMEOUT_MS;
++        int res;
++        do {
++            res = setupServicesAndStartListening();
++            if (res == 0) {
++                return 0;
++            }
++            try {
++                Thread.sleep(SETUP_RETRY_INTERVAL_MS);
++            } catch (InterruptedException e) {
++                Thread.currentThread().interrupt();
++                return res;
++            }
++        } while (System.currentTimeMillis() < deadline);
++        return res;
++    }
++
+     @Override
+     public void onDestroy() {
+         synchronized (mServiceLock) {
+diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
+index 15fd9f65d35857fb113eea9b6896f27fd9264c76..3f36401694626ff22bf8b1b1e17e6d2a34f4808e 100644
+--- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
++++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
+@@ -31,6 +31,8 @@ import com.android.deviceaswebcam.utils.IgnoredV4L2Nodes;
+  */
+ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
+     private static final String TAG = DeviceAsWebcamReceiver.class.getSimpleName();
++    public static final String ACTION_PREPARE_UVC =
++            "com.android.DeviceAsWebcam.action.PREPARE_UVC";
+     private static final boolean VERBOSE = Log.isLoggable(TAG, Log.VERBOSE);
+ 
+     static {
+@@ -40,18 +42,24 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
+     @Override
+     public final void onReceive(Context context, Intent intent) {
+         final String action = intent.getAction();
+-        Bundle extras = intent.getExtras();
+-        if (extras == null) {
+-            return;
+-        }
+-        boolean uvcSelected = extras.getBoolean(UsbManager.USB_FUNCTION_UVC);
+         if (VERBOSE) {
+-            Log.v(TAG, "Got broadcast with extras" + extras);
++            Log.v(TAG, "Got broadcast " + action + " with extras" + intent.getExtras());
+         }
+         if (!UsbManager.isUvcSupportEnabled()) {
+             Log.i(TAG, "UVC support isn't enabled. Returning early.");
+             return;
+         }
++
++        if (ACTION_PREPARE_UVC.equals(action)) {
++            startForegroundService(context);
++            return;
++        }
++
++        Bundle extras = intent.getExtras();
++        if (extras == null) {
++            return;
++        }
++        boolean uvcSelected = extras.getBoolean(UsbManager.USB_FUNCTION_UVC);
+         if (UsbManager.ACTION_USB_STATE.equals(action) && uvcSelected) {
+             String[] ignoredNodes = IgnoredV4L2Nodes.getIgnoredNodes(context);
+             if (!DeviceAsWebcamFgService.shouldStartServiceNative(ignoredNodes)) {
+@@ -60,12 +68,16 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
+                 }
+                 return;
+             }
+-            Class<? extends DeviceAsWebcamFgService> klass = getForegroundServiceClass();
+-            Intent fgIntent = new Intent(context, klass);
+-            context.startForegroundService(fgIntent);
+-            if (VERBOSE) {
+-                Log.v(TAG, "started foreground service");
+-            }
++            startForegroundService(context);
++        }
++    }
++
++    private void startForegroundService(Context context) {
++        Class<? extends DeviceAsWebcamFgService> klass = getForegroundServiceClass();
++        Intent fgIntent = new Intent(context, klass);
++        context.startForegroundService(fgIntent);
++        if (VERBOSE) {
++            Log.v(TAG, "started foreground service");
+         }
+     }
+ 

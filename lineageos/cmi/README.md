@@ -25,40 +25,40 @@ CONFIG_USB_CONFIGFS_F_UVC=y
 
 ## Integration
 
-Prepare the LineageOS workspace from the CaCam repository:
+Prepare the LineageOS workspace from the CaCamOS repository root:
 
 ```bash
-./cacam-os/tools/prepare-lineage-workspace.sh --init cmi /home/denis/Documents/Denis/dev/lineage-cmi
-./cacam-os/tools/prepare-lineage-workspace.sh --local-manifest cmi /home/denis/Documents/Denis/dev/lineage-cmi
-./cacam-os/tools/prepare-lineage-workspace.sh --sync cmi /home/denis/Documents/Denis/dev/lineage-cmi
+./tools/prepare-lineage-workspace.sh --init cmi /home/denis/Documents/Denis/dev/lineage-cmi
+./tools/prepare-lineage-workspace.sh --local-manifest cmi /home/denis/Documents/Denis/dev/lineage-cmi
+./tools/prepare-lineage-workspace.sh --sync cmi /home/denis/Documents/Denis/dev/lineage-cmi
 ```
 
 For a source-only preflight before the full ROM sync:
 
 ```bash
-./cacam-os/tools/prepare-lineage-workspace.sh --sync-webcam-deps cmi /home/denis/Documents/Denis/dev/lineage-cmi
-./cacam-os/lineageos/cmi/tools/check-lineage-source-preflight.sh /home/denis/Documents/Denis/dev/lineage-cmi
+./tools/prepare-lineage-workspace.sh --sync-webcam-deps cmi /home/denis/Documents/Denis/dev/lineage-cmi
+./lineageos/cmi/tools/check-lineage-source-preflight.sh /home/denis/Documents/Denis/dev/lineage-cmi
 ```
 
 If a deliberately partial sync was interrupted, `--allow-partial` reports
 missing large projects as warnings. Do not use that mode as final build proof.
 
-Recommended path from this CaCam repository:
+Recommended path from this CaCamOS repository:
 
 ```bash
-./cacam-os/lineageos/cmi/tools/install-into-lineage.sh /path/to/lineageos
+./lineageos/cmi/tools/install-into-lineage.sh /path/to/lineageos
 ```
 
 Or apply the patch manually from the root of a synced LineageOS tree:
 
 ```bash
-git apply /path/to/CaCam/cacam-os/lineageos/cmi/patches/0001-cmi-enable-cacam-os-webcam.patch
+git apply /path/to/cacamos/lineageos/cmi/patches/0001-cmi-enable-cacam-os-webcam.patch
 ```
 
 Verify the source tree before building:
 
 ```bash
-/path/to/CaCam/cacam-os/lineageos/cmi/tools/verify-source-tree.sh /path/to/lineageos
+/path/to/cacamos/lineageos/cmi/tools/verify-source-tree.sh /path/to/lineageos
 ```
 
 Then build normally:
@@ -73,7 +73,7 @@ Host prerequisites and the current machine audit are tracked in
 `BUILD_REQUIREMENTS.md`. Run this from a candidate LineageOS root:
 
 ```bash
-/path/to/CaCam/cacam-os/lineageos/cmi/tools/check-build-host.sh
+/path/to/cacamos/lineageos/cmi/tools/check-build-host.sh
 ```
 
 The patch does three things:
@@ -126,7 +126,7 @@ verifying the HAL path before build.
 After flashing the build, boot the phone, plug it into a computer and run:
 
 ```bash
-./cacam-os/lineageos/cmi/tools/verify-webcam.sh
+./lineageos/cmi/tools/verify-webcam.sh
 ```
 
 Expected Android-side signals:

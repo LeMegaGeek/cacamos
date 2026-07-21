@@ -76,7 +76,7 @@ case "$device" in
     cmi)
         lineage_branch="lineage-23.2"
         breakfast_target="cmi"
-        addon_script="cacam-os/lineageos/cmi/tools/install-into-lineage.sh"
+        addon_script="lineageos/cmi/tools/install-into-lineage.sh"
         device_common_path="device/xiaomi/sm8250-common"
         kernel_path="kernel/xiaomi/sm8250"
         vendor_common_path="vendor/xiaomi/sm8250-common"
@@ -84,7 +84,7 @@ case "$device" in
     dipper)
         lineage_branch="lineage-22.2"
         breakfast_target="dipper"
-        addon_script="cacam-os/lineageos/dipper/tools/install-into-lineage.sh"
+        addon_script="lineageos/dipper/tools/install-into-lineage.sh"
         device_common_path="device/xiaomi/sdm845-common"
         kernel_path="kernel/xiaomi/sdm845"
         vendor_common_path="vendor/xiaomi/sdm845-common"
@@ -94,7 +94,7 @@ case "$device" in
         ;;
 esac
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(mkdir -p "$workspace" && cd "$workspace" && pwd)"
 webcam_sync_projects=(
     build/make
@@ -219,8 +219,8 @@ cat <<EOF
 Next commands:
   cd $workspace
   $repo_bin init -u https://github.com/LineageOS/android.git -b $lineage_branch --git-lfs
-  $repo_root/cacam-os/tools/prepare-lineage-workspace.sh --local-manifest $device $workspace
-  $repo_root/cacam-os/tools/prepare-lineage-workspace.sh --sync-webcam-deps $device $workspace
+  $repo_root/tools/prepare-lineage-workspace.sh --local-manifest $device $workspace
+  $repo_root/tools/prepare-lineage-workspace.sh --sync-webcam-deps $device $workspace
   $repo_bin sync -c --no-clone-bundle --no-tags -j\$(nproc)
   $repo_root/$addon_script $workspace
   source build/envsetup.sh

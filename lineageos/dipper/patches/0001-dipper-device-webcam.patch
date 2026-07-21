@@ -1,0 +1,100 @@
+diff --git a/device/xiaomi/dipper/device.mk b/device/xiaomi/dipper/device.mk
+index 7eed60e45bd3d9451d493854f6f782477e249f15..887a0c5381f2870561a121a08af51323efafee9b 100644
+--- a/device/xiaomi/dipper/device.mk
++++ b/device/xiaomi/dipper/device.mk
+@@ -23,6 +23,18 @@ DEVICE_PACKAGE_OVERLAYS += \
+ PRODUCT_PACKAGES += \
+     NoCutoutOverlay
+ 
++# CaCam OS webcam mode
++#
++# Expose the phone as a standard USB Video Class gadget. The actual camera
++# pipeline is Android's privileged DeviceAsWebcam service; hosts see a regular
++# USB webcam instead of a CaCam/BGOBS-specific source.
++PRODUCT_PACKAGES += \
++    CaCamOsDeviceAsWebcamDipper \
++    DeviceAsWebcam
++
++PRODUCT_SYSTEM_PROPERTIES += \
++    ro.usb.uvc.enabled=true
++
+ # Permissions
+ PRODUCT_COPY_FILES += \
+     frameworks/native/data/etc/android.hardware.nfc.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.xml \
+diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp
+new file mode 100644
+index 0000000000000000000000000000000000000000..72febd267875fb33882354bb137e1e8697f2c196
+--- /dev/null
++++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp
+@@ -0,0 +1,7 @@
++// SPDX-FileCopyrightText: 2026 LeMegaGeek
++// SPDX-License-Identifier: Apache-2.0
++
++runtime_resource_overlay {
++    name: "CaCamOsDeviceAsWebcamDipper",
++    product_specific: true,
++}
+diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/AndroidManifest.xml b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/AndroidManifest.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..92743a474d89cd59c3584ae66c68a797eac13713
+--- /dev/null
++++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/AndroidManifest.xml
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     SPDX-FileCopyrightText: 2026 LeMegaGeek
++     SPDX-License-Identifier: Apache-2.0
++-->
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="fr.lemegageek.cacam.os.overlay.deviceaswebcam.dipper">
++
++    <overlay
++        android:targetPackage="com.android.DeviceAsWebcam"
++        android:isStatic="true"
++        android:priority="10" />
++</manifest>
+diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_cameras.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_cameras.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe51488c7066f6687ef680d6bfaa4f7768ef205c
+--- /dev/null
++++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_cameras.json
+@@ -0,0 +1 @@
++[]
+diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_v4l2_nodes.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_v4l2_nodes.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d3e7fa197cd738fa43603d46b38d2e2165fab55
+--- /dev/null
++++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_v4l2_nodes.json
+@@ -0,0 +1,7 @@
++[
++  "/dev/video0",
++  "/dev/video1",
++  "/dev/video2",
++  "/dev/video32",
++  "/dev/video33"
++]
+diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_mapping.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_mapping.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..0967ef424bce6791893e9a57bb952f80fd536e93
+--- /dev/null
++++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_mapping.json
+@@ -0,0 +1 @@
++{}
+diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_zoom_ratio_ranges.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_zoom_ratio_ranges.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..0967ef424bce6791893e9a57bb952f80fd536e93
+--- /dev/null
++++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_zoom_ratio_ranges.json
+@@ -0,0 +1 @@
++{}
+diff --git a/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml b/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
+index f007795dd5be3fe60e4af1e28968570a7f9332d2..4f0c5150a0b62df98ad5dc167667cd9ff4f33f57 100644
+--- a/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
++++ b/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
+@@ -700,4 +700,6 @@
+         <item>3</item> <!-- COLOR_MODE_AUTOMATIC -->
+     </integer-array>
+ 
++    <!-- CaCamOS: default USB device mode is Webcam/UVC. -->
++    <bool name="config_usbDefaultToUvc">true</bool>
+ </resources>

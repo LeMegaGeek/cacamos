@@ -1,13 +1,24 @@
-# CaCam OS Xiaomi Webcam Addons 0.6.11
+# CaCam OS Xiaomi Webcam Addons
 
 Source addons for exposing supported Xiaomi phones as standard USB webcams.
+
+## Unreleased
+
+- Moves CaCam OS into its dedicated `LeMegaGeek/cacamos` repository.
+- Re-roots all scripts and documentation for standalone use.
+- Captures the complete current MI8 LineageOS delta as a five-part patch
+  series, including the validated OBS first-frame fix.
+- Records the remaining MI8 rotation, color and green-band defects for the next
+  work session.
+
+## 0.6.11
 
 ## Included Targets
 
 - Xiaomi Mi 10 Pro (`cmi`), LineageOS `23.2`, addon `0.5.3`.
 - Xiaomi Mi 8 (`dipper`), LineageOS `22.2`, addon `0.1.9`.
-- Workspace helper: `cacam-os/tools/prepare-lineage-workspace.sh`.
-- Connected-device audit helper: `cacam-os/tools/audit-connected-device.sh`.
+- Workspace helper: `tools/prepare-lineage-workspace.sh`.
+- Connected-device audit helper: `tools/audit-connected-device.sh`.
 
 ## New in 0.6.11
 

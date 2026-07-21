@@ -1,6 +1,20 @@
-# CaCam OS dipper Webcam Addon 0.1.9
+# CaCam OS dipper Webcam Addon
 
 Xiaomi Mi 8 (`dipper`) LineageOS integration for standard USB webcam mode.
+
+## Unreleased
+
+- Captures the current LineageOS working tree as a reproducible patch series.
+- Defaults the MI8 to UVC-only after user unlock, without requiring ADB in the
+  active USB composition.
+- Includes the kernel and DeviceAsWebcam negotiation changes that make Linux
+  enumerate the phone and let OBS receive a continuous stream.
+- Queues the first camera frame before completing `STREAMON`, avoiding OBS's
+  first-frame timeout.
+- Keeps the current visual defects documented: 90-degree rotation, incorrect
+  colors and a green band.
+
+## 0.1.9
 
 ## Included
 
