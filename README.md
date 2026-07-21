@@ -3,6 +3,9 @@
 CaCam OS is the ROM-side track for exposing supported Android phones as real
 USB webcams.
 
+The current Xiaomi Mi 8 runtime state and the next image-pipeline work are
+tracked in [`CURRENT_STATUS.md`](CURRENT_STATUS.md).
+
 Unlike the Play Store CaCam app, this path targets the Android USB gadget stack:
 the host computer should see a standard USB Video Class camera.
 
@@ -100,15 +103,11 @@ path and `ro.usb.uvc.enabled=true`. Live testing then found two ROM-side fixes:
 DeviceAsWebcam must ignore the MI8 internal V4L2 nodes, and it must be awake
 before the host probes the UVC gadget.
 
-The current `dipper` development build has been installed on the MI8. Linux
-enumerates it as a standard UVC webcam and OBS receives a continuous stream at
-about 30 FPS. The first-frame timeout is fixed by queueing the first V4L2 frame
-before completing `STREAMON`.
-
-Current remaining image defects are a 90-degree rotation, incorrect colors and
-a green band. The next investigation starts in DeviceAsWebcam's image
-conversion and rotation path; no new build is needed merely to resume the
-source analysis.
+The current `dipper` build now boots directly into Webcam mode, enumerates as a
+standard UVC device on Linux and streams continuously in OBS at about 30 FPS.
+The first-frame timeout is fixed by queueing the first V4L2 frame before
+completing `STREAMON`. The remaining image defects are documented in
+`CURRENT_STATUS.md`.
 
 Host-side enumeration can be checked with:
 

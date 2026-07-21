@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 adb_bin="${ADB:-adb}"
-out_dir="${1:-dist/cacam-os-audits}"
+out_dir="${1:-$project_root/dist/cacam-os-audits}"
 
 require_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
