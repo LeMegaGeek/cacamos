@@ -98,11 +98,11 @@ Status: complete.
 
 ## Phase 6: Release
 
-Status: in progress.
+Status: complete.
 
 - Mark R13 qualified from the complete acceptance record: complete.
 - Finalize status, audit, release notes and installation instructions:
   complete.
 - Commit and push the reviewed CaCamOS sources to
-  `https://github.com/LeMegaGeek/cacamos`.
-- Publish the exact verified OTA and checksum as CaCamOS 0.7.0.
+  `https://github.com/LeMegaGeek/cacamos`: complete.
+- Publish the exact verified OTA and checksum as CaCamOS 0.7.0: complete.
