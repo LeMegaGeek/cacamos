@@ -2,14 +2,37 @@
 
 Source addons for exposing supported Xiaomi phones as standard USB webcams.
 
-## Unreleased
+## 0.7.0
 
-- Moves CaCam OS into its dedicated `LeMegaGeek/cacamos` repository.
-- Re-roots all scripts and documentation for standalone use.
-- Captures the complete current MI8 LineageOS delta as a five-part patch
-  series, including the validated OBS first-frame fix.
-- Records the remaining MI8 rotation, color and green-band defects for the next
-  work session.
+- Publishes the physically qualified Xiaomi Mi 8 R13 OTA with reproducible
+  source, patch, artifact and package-signature gates.
+- Starts directly in the webcam interface without a lock screen, exposes UVC
+  alone on the cable and restores secure ADB over Wi-Fi automatically.
+- Fixes UVC streaming freezes, malformed MJPEG frames, color conversion, the
+  former green band and front-camera landscape orientation.
+- Advertises only the verified 360p, 720p and 1080p MJPEG modes plus 360p
+  YUYV, each at 15 and 30 FPS.
+- Delivers 18,000 intact 720p MJPEG frames over ten minutes and survives
+  repeated USB remove/add cycles without restarting the phone or webcam
+  process.
+- Lets OBS Studio 32.2.0 on Linux detect USB removal and return when the source
+  uses its direct `/dev/video0` node.
+- Adds controlled two-job builds, memory protection, exact OTA verification,
+  recovery-only installation and complete runtime qualification tools.
+- Moves CaCamOS into its dedicated `LeMegaGeek/cacamos` repository and records
+  all eight MI8 LineageOS patches.
+
+Qualified OTA:
+
+```text
+lineage-22.2-20260727-UNOFFICIAL-CACAMOS-R13-dipper.zip
+size=1223300465
+sha256=efed9f1141514d1835bd8e48e6a5d7d04fa97fb0ab97083fd8df194f42c4a7a8
+build_incremental=1785181771
+```
+
+Known limitation: after a USB disconnect/reconnect, OBS can later stop
+receiving frames. Restarting OBS restores capture.
 
 ## 0.6.11
 
@@ -116,10 +139,5 @@ CONFIG_USB_CONFIGFS_F_UVC=y
 
 ## Validation Status
 
-Both source addons apply cleanly to mini LineageOS source trees reconstructed
-from official LineageOS GitHub sources. Real completion still requires flashing
-the resulting build and proving host-side UVC enumeration with:
-
-```bash
-v4l2-ctl --list-devices
-```
+The Xiaomi Mi 8 R13 OTA is installed and physically qualified. The Mi 10 Pro
+source addon remains an audited source target and is not part of this release.

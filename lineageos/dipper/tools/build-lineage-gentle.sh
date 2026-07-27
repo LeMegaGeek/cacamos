@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lineage_root=""
 target="bacon"
-jobs=1
+jobs=2
 check_only=0
 allow_low_memory=0
+existing_graph=0
 reserve_cores=2
 cpu_set=""
 cpu_set_cores=0
-min_free_mem_mib=3072
-watchdog_interval_seconds=15
-go_memlimit_mib=24000
+min_free_mem_mib=4096
+watchdog_interval_seconds=5
+go_memlimit_mib=12000
 
 usage() {
     cat >&2 <<'EOF'
 Usage:
   build-lineage-gentle.sh --lineage-root /path/to/lineageos [--target bacon]
+  build-lineage-gentle.sh --lineage-root /path/to/lineageos --existing-graph
   build-lineage-gentle.sh --lineage-root /path/to/lineageos --check-only
 
 Runs the MI8 LineageOS build with controlled resource limits:
-  - configurable build jobs, default 1
+  - configurable build jobs, default 2
   - GOMAXPROCS follows the job count
   - two CPU cores reserved for the desktop when taskset is available
   - low CPU and IO priority
@@ -30,16 +33,18 @@ Runs the MI8 LineageOS build with controlled resource limits:
 This script is intentionally slow. It exists to keep the desktop usable.
 
 Options:
-  --jobs N            Build parallelism. Default: 1
+  --jobs N            Build parallelism. Default: 2
+  --existing-graph    Run Ninja directly from the existing product graph.
+                      Use only when Android.bp/Android.mk files are unchanged.
   --reserve-cores N   Keep N CPU cores free for the desktop. Default: 2
   --cpu-set LIST      Use an explicit taskset CPU list, for example 0-3
   --min-free-mem-mib N
                       Stop the build if MemAvailable drops below N MiB.
-                      Default: 3072
+                      Default: 4096
   --go-memlimit-mib N
-                      GOMEMLIMIT for Soong/Go processes. Default: 24000
+                      GOMEMLIMIT for Soong/Go processes. Default: 12000
   --watchdog-interval N
-                      Memory watchdog polling interval in seconds. Default: 15
+                      Memory watchdog polling interval in seconds. Default: 5
   --allow-low-memory  Skip the memory/swap safety stop
 EOF
 }
@@ -83,6 +88,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --allow-low-memory)
             allow_low_memory=1
+            shift
+            ;;
+        --existing-graph)
+            existing_graph=1
             shift
             ;;
         --reserve-cores)
@@ -129,6 +138,7 @@ done
 lineage_root="$(cd "$lineage_root" && pwd)"
 [[ -f "$lineage_root/build/envsetup.sh" ]] || fail "missing build/envsetup.sh in $lineage_root"
 [[ -d "$lineage_root/device/xiaomi/dipper" ]] || fail "missing device/xiaomi/dipper"
+"$script_dir/verify-source-tree.sh" "$lineage_root"
 
 mem_available_kib="$(mem_kib MemAvailable)"
 swap_free_kib="$(mem_kib SwapFree)"
@@ -208,6 +218,11 @@ printf '  Reserve cores: %s\n' "$reserve_cores"
 printf '  Go mem limit:  %s MiB\n' "$go_memlimit_mib"
 printf '  Watchdog stop: %s MiB MemAvailable\n' "$min_free_mem_mib"
 printf '  Watchdog tick: %s seconds\n' "$watchdog_interval_seconds"
+if [[ "$existing_graph" -eq 1 ]]; then
+    printf '  Build graph:    existing Ninja graph\n'
+else
+    printf '  Build graph:    Soong configuration and Ninja\n'
+fi
 if command -v taskset >/dev/null 2>&1; then
     printf '  Build CPU set: %s\n' "${cpu_set:-all}"
 else
@@ -230,7 +245,6 @@ printf '\nStarting conservative MI8 build target: %s\n' "$target"
 printf 'This can still take hours. Stop with Ctrl+C if the desktop becomes uncomfortable.\n\n'
 
 cd "$lineage_root"
-export GOMAXPROCS=1
 export GOMAXPROCS="$jobs"
 export GOMEMLIMIT="${go_memlimit_mib}MiB"
 export NINJA_ARGS="-j${jobs}"
@@ -273,7 +287,22 @@ stop_build() {
 
 trap 'printf "\nInterrupted, stopping build...\n" >&2; stop_build TERM; exit 130' INT TERM
 
-build_command=("${runner[@]}" bash -lc "$(declare -f run_build); run_build")
+if [[ "$existing_graph" -eq 1 ]]; then
+    ninja_file="$lineage_root/out/combined-lineage_dipper.ninja"
+    ninja_bin="$lineage_root/prebuilts/build-tools/linux-x86/bin/ninja"
+    [[ -f "$ninja_file" ]] || fail "missing existing Ninja graph: $ninja_file"
+    [[ -x "$ninja_bin" ]] || fail "missing Ninja executable: $ninja_bin"
+    export PATH="$lineage_root/prebuilts/build-tools/path/linux-x86:$PATH"
+    build_command=(
+        "${runner[@]}"
+        "$ninja_bin"
+        -f "$ninja_file"
+        -j"$jobs"
+        "$target"
+    )
+else
+    build_command=("${runner[@]}" bash -lc "$(declare -f run_build); run_build")
+fi
 
 if command -v setsid >/dev/null 2>&1; then
     setsid "${build_command[@]}" &
@@ -305,6 +334,15 @@ set -e
 if [[ -n "$watchdog_pid" ]] && kill -0 "$watchdog_pid" 2>/dev/null; then
     kill "$watchdog_pid" 2>/dev/null || true
     wait "$watchdog_pid" 2>/dev/null || true
+fi
+
+if [[ "$build_status" -eq 0 ]]; then
+    case "$target" in
+        bacon|otapackage|lineage_dipper-ota.zip|*/lineage_dipper-ota.zip)
+            "$script_dir/verify-build-artifacts.sh" "$lineage_root" \
+                "$lineage_root/out/target/product/dipper/lineage_dipper-ota.zip"
+            ;;
+    esac
 fi
 
 exit "$build_status"

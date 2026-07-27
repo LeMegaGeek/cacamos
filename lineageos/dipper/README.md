@@ -13,7 +13,7 @@ without network streaming.
 - Codename: `dipper`
 - Platform: Qualcomm `sdm845`
 - LineageOS branch checked: `lineage-22.2`
-- Latest official build checked: `lineage-22.2-20260627-nightly-dipper-signed.zip`
+- CaCamOS release: `0.2.0`, ROM R13
 
 ## Important Difference From Mi 10 Pro
 
@@ -25,12 +25,12 @@ Checked official sources show:
 ```text
 CONFIG_USB_GADGET=y
 CONFIG_USB_CONFIGFS=y
-CONFIG_USB_VIDEO_CLASS=<missing>
 CONFIG_USB_CONFIGFS_F_UVC=<missing>
 ```
 
 So the MI8 addon patches both the Android product and the kernel config
-fragment.
+fragment. `CONFIG_USB_VIDEO_CLASS` is the unrelated USB host-camera driver; a
+phone acting as a webcam requires the ConfigFS UVC gadget function instead.
 
 ## Integration
 
@@ -65,13 +65,15 @@ done
 Verify the source tree before building:
 
 ```bash
+/path/to/cacamos/lineageos/dipper/tools/verify-patch-series.sh \
+  --match-worktrees /path/to/lineageos
 /path/to/cacamos/lineageos/dipper/tools/verify-source-tree.sh /path/to/lineageos
 ```
 
 Then build. On Denis' current desktop, use the conservative wrapper first. It
-checks memory, forces a single low-priority build job, reserves two CPU cores
-for the desktop when `taskset` is available, and stops the build if available
-memory drops too low while it is running:
+checks memory, uses two low-priority build jobs, reserves two CPU cores for the
+desktop when `taskset` is available, and stops the build if available memory
+drops too low while it is running:
 
 ```bash
 /path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
@@ -90,8 +92,8 @@ The default CPU reservation can be adjusted if needed:
   --reserve-cores 3
 ```
 
-The runtime memory watchdog defaults to stopping the build below 3072 MiB of
-`MemAvailable`. To use a stricter threshold:
+The runtime memory watchdog defaults to stopping the build below 4096 MiB of
+`MemAvailable`. To override the threshold:
 
 ```bash
 /path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
@@ -107,9 +109,23 @@ breakfast dipper
 mka bacon
 ```
 
-## Runtime Test Tonight
+## Qualified OTA
 
-With the MI8 connected by ADB, run:
+CaCamOS 0.7.0 ships the exact MI8 R13 OTA qualified on the physical device:
+
+```text
+lineage-22.2-20260727-UNOFFICIAL-CACAMOS-R13-dipper.zip
+size=1223300465
+sha256=efed9f1141514d1835bd8e48e6a5d7d04fa97fb0ab97083fd8df194f42c4a7a8
+build_incremental=1785181771
+```
+
+Download:
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v0.7.0>
+
+## Runtime Validation
+
+With the MI8 available through wireless ADB, run:
 
 ```bash
 ./tools/audit-connected-device.sh
@@ -117,10 +133,11 @@ With the MI8 connected by ADB, run:
 ```
 
 On an unpatched official Nightly, the expected result is a useful failure:
-kernel UVC flags should be reported as missing. After flashing a CaCam OS build,
-the same script should show `ro.usb.uvc.enabled=true` and kernel UVC enabled.
+kernel UVC flags should be reported as missing. On CaCamOS, the verifier checks
+the framework UVC default, the live USB HAL function, the kernel gadget, the
+automatic preview, no-lock state and wireless ADB.
 
-Final success still requires host-side enumeration:
+Host-side enumeration can be checked with:
 
 ```bash
 v4l2-ctl --list-devices
@@ -128,21 +145,52 @@ v4l2-ctl --list-devices
 
 The MI8 must appear as a USB/video capture device.
 
-If `verify-webcam.sh` reports `ro.usb.uvc.enabled` as `unset`, the active ROM
-is not the patched CaCam OS LineageOS build. Flash a local patched build from your
-Lineage workspace and rerun verification:
+After installation, the strict automatic runtime gate checks the real UVC
+function, lock state, wireless ADB, advertised modes, repeated raw JPEG
+integrity and one sustained stream:
 
 ```bash
-cd /home/denis/Documents/Denis/dev/lineage-dipper
-ls -1 out/target/product/dipper/lineage-22.2-*-UNOFFICIAL-dipper.zip
-
-cd /home/denis/Documents/Denis/dev/cacamos/lineageos/dipper/tools
-./flash-verified-build.sh /home/denis/Documents/Denis/dev/lineage-dipper
+EXPECTED_BUILD_INCREMENTAL=1785181771 ADB_SERIAL=<wireless-ip:port> \
+  ./lineageos/dipper/tools/qualify-runtime.sh
 ```
 
-If `flash-verified-build.sh` stops with `fastboot device not detected yet`, the phone is often in ADB sideload mode (`adb get-state` = `sideload`). In that case, run the same command after manually choosing "Yes" on the recovery sideload prompt; the script can also flash using `adb sideload` directly when this state is detected.
+The shell may be unable to read `ro.usb.uvc.enabled` because of SELinux, so an
+`unset` value alone does not identify the ROM. The authoritative runtime checks
+are the framework overlay `config_usbDefaultToUvc=true` and USB HAL
+`current_functions=0x80`.
 
-If recovery stays in `sideload` for too long, reboot into fastboot manually with `Vol- + Power`, then rerun the same command.
+To install the verified OTA from a local LineageOS workspace:
+
+```bash
+cd /home/denis/Documents/Denis/dev/cacamos/lineageos/dipper/tools
+./flash-verified-build.sh \
+  /home/denis/Documents/Denis/dev/lineage-dipper \
+  /home/denis/Documents/Denis/dev/lineage-dipper/out/target/product/dipper/lineage-22.2-20260727-UNOFFICIAL-CACAMOS-R13-dipper.zip
+```
+
+The supported MI8 installation path is deliberately singular:
+
+1. Open Lineage Recovery on the phone.
+2. Select **Apply update**, then **Apply from ADB**.
+3. Run `flash-verified-build.sh` with the exact OTA path.
+
+The installer first validates the source tree, compiled APK, kernel, staged
+payload, device metadata and OTA signature. It then requires exactly one ADB
+sideload device and refuses every other device state.
+
+## OBS on Linux
+
+Use the direct V4L2 capture node, such as `/dev/video0`, for the CaCamOS source
+in OBS Studio. OBS 32.2.0 compares the configured path with the udev remove/add
+path literally; a `/dev/v4l/by-id/...` path therefore does not reconnect
+automatically after the cable returns.
+
+R13 returned to 1280x720 MJPEG at 30 FPS after three consecutive USB remove/add
+cycles with the direct node. A later capture timeout can still freeze the OBS
+picture. Restart OBS to restore capture; this is a known R13 limitation.
+
+Do not use `svc usb resetUsbGadget` for diagnostics on the MI8. It can panic
+this kernel. The qualification tool uses a host-side USB reset instead.
 
 ## Kernel-Only Test Boot
 

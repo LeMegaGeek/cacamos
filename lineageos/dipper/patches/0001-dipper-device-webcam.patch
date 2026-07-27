@@ -1,8 +1,8 @@
 diff --git a/device/xiaomi/dipper/device.mk b/device/xiaomi/dipper/device.mk
-index 7eed60e45bd3d9451d493854f6f782477e249f15..887a0c5381f2870561a121a08af51323efafee9b 100644
+index 7eed60e45bd3d9451d493854f6f782477e249f15..59e024610ef653504475402720a888059c15ab39 100644
 --- a/device/xiaomi/dipper/device.mk
 +++ b/device/xiaomi/dipper/device.mk
-@@ -23,6 +23,18 @@ DEVICE_PACKAGE_OVERLAYS += \
+@@ -23,6 +23,19 @@ DEVICE_PACKAGE_OVERLAYS += \
  PRODUCT_PACKAGES += \
      NoCutoutOverlay
  
@@ -16,6 +16,7 @@ index 7eed60e45bd3d9451d493854f6f782477e249f15..887a0c5381f2870561a121a08af51323
 +    DeviceAsWebcam
 +
 +PRODUCT_SYSTEM_PROPERTIES += \
++    ro.usb.uvc.disable_video_encode_flag=true \
 +    ro.usb.uvc.enabled=true
 +
  # Permissions
@@ -88,13 +89,19 @@ index 0000000000000000000000000000000000000000..0967ef424bce6791893e9a57bb952f80
 @@ -0,0 +1 @@
 +{}
 diff --git a/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml b/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
-index f007795dd5be3fe60e4af1e28968570a7f9332d2..4f0c5150a0b62df98ad5dc167667cd9ff4f33f57 100644
+index f007795dd5be3fe60e4af1e28968570a7f9332d2..21f8b856aed78475136bf5cf59777d10bccad449 100644
 --- a/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
 +++ b/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
-@@ -700,4 +700,6 @@
+@@ -700,4 +700,12 @@
          <item>3</item> <!-- COLOR_MODE_AUTOMATIC -->
      </integer-array>
  
 +    <!-- CaCamOS: default USB device mode is Webcam/UVC. -->
 +    <bool name="config_usbDefaultToUvc">true</bool>
++
++    <!-- CaCamOS: keep the USB cable UVC-only and use paired TLS ADB over Wi-Fi. -->
++    <bool name="config_adbWifiAutoEnable">true</bool>
++
++    <!-- CaCamOS is a dedicated camera appliance: do not stop at the swipe keyguard. -->
++    <bool name="config_disableLockscreenByDefault">true</bool>
  </resources>

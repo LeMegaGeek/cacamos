@@ -9,6 +9,18 @@ tracked in [`CURRENT_STATUS.md`](CURRENT_STATUS.md).
 Unlike the Play Store CaCam app, this path targets the Android USB gadget stack:
 the host computer should see a standard USB Video Class camera.
 
+## Xiaomi Mi 8 Release
+
+CaCamOS 0.7.0 includes the physically qualified MI8 R13 OTA:
+
+```text
+lineage-22.2-20260727-UNOFFICIAL-CACAMOS-R13-dipper.zip
+sha256=efed9f1141514d1835bd8e48e6a5d7d04fa97fb0ab97083fd8df194f42c4a7a8
+```
+
+Release and download:
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v0.7.0>
+
 ```bash
 git clone https://github.com/LeMegaGeek/cacamos.git
 cd cacamos
@@ -84,10 +96,11 @@ The MI8 source audit showed:
 - official LineageOS build checked: `22.2-20260627`
 - QTI USB gadget HAL UVC support: present
 - SELinux read access for `usb_uvc_enabled_prop`: present
-- `CONFIG_USB_VIDEO_CLASS`: missing in stock kernel config
 - `CONFIG_USB_CONFIGFS_F_UVC`: missing in stock kernel config
 
 So the `dipper` addon also patches the device-specific kernel config fragment.
+`CONFIG_USB_VIDEO_CLASS` is not required here: it is the host-side webcam
+driver, while CaCamOS uses the UVC gadget function.
 
 Current MI8 test artifacts:
 
@@ -103,14 +116,22 @@ path and `ro.usb.uvc.enabled=true`. Live testing then found two ROM-side fixes:
 DeviceAsWebcam must ignore the MI8 internal V4L2 nodes, and it must be awake
 before the host probes the UVC gadget.
 
-The current `dipper` build now boots directly into Webcam mode, enumerates as a
-standard UVC device on Linux and streams continuously in OBS at about 30 FPS.
-The first-frame timeout is fixed by queueing the first V4L2 frame before
-completing `STREAMON`. The remaining image defects are documented in
-`CURRENT_STATUS.md`.
+R13 physically validates every advertised 360p, 720p and 1080p mode at 15 and
+30 FPS, including 18,000 intact 720p frames and five automated host USB resets.
+It corrects the front-camera 180-degree landscape error and keeps the UVC
+listener alive across cable reconnects. Automatic preview, no-lock startup,
+UVC-only cable mode and secure ADB over Wi-Fi are also qualified. The exact
+evidence is documented in
+[`CURRENT_STATUS.md`](CURRENT_STATUS.md) and
+[`lineageos/dipper/DEVELOPMENT_PLAN.md`](lineageos/dipper/DEVELOPMENT_PLAN.md).
 
 Host-side enumeration can be checked with:
 
 ```bash
 v4l2-ctl --list-devices
 ```
+
+On OBS Studio 32.2.0 for Linux, select the direct capture node such as
+`/dev/video0` for the CaCamOS source. OBS then recognizes the udev remove/add
+events when the USB cable returns. R13 has one known limitation: capture can
+subsequently freeze in OBS, and restarting OBS restores it.

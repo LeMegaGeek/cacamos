@@ -1,3 +1,15 @@
+diff --git a/system/sepolicy/private/adbd.te b/system/sepolicy/private/adbd.te
+index b87b31916ced0cb560f4ac0dd76d6803f90692ea..3044ab0badf647f62f43d191dedc79c317b49e0c 100644
+--- a/system/sepolicy/private/adbd.te
++++ b/system/sepolicy/private/adbd.te
+@@ -81,6 +81,7 @@ allow adbd vendor_framework_file:file r_file_perms;
+ set_prop(adbd, shell_prop)
+ set_prop(adbd, powerctl_prop)
+ get_prop(adbd, ffs_config_prop)
++get_prop(adbd, usb_uvc_enabled_prop)
+ set_prop(adbd, ffs_control_prop)
+ set_prop(adbd, adbd_tradeinmode_prop)
+ 
 diff --git a/system/sepolicy/private/system_server.te b/system/sepolicy/private/system_server.te
 index 01097f2b1a14e7b66b85163df607591170a85c5d..a4be72ca1789be16227b4f17f5e3d1c6f28d202c 100644
 --- a/system/sepolicy/private/system_server.te

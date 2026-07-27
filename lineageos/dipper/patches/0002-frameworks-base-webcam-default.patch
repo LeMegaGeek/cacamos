@@ -12,46 +12,388 @@ index 81c2af8c8d563243bb1cfbd12a6bd60a6f6ca290..efad9f28c309d315c0057e4def941796
      <protected-broadcast android:name="android.intent.action.SCREEN_ON" />
      <protected-broadcast android:name="android.intent.action.USER_PRESENT" />
 diff --git a/frameworks/base/core/res/res/values/config.xml b/frameworks/base/core/res/res/values/config.xml
-index 18fd4447c3838b881e3eea03679ef55a16caf778..bcbc712631f633fe6a40695750ed09d627811b5d 100644
+index 18fd4447c3838b881e3eea03679ef55a16caf778..1ffb0ec81cf7a7ab8ae1fbe74ad5f5922e51d136 100644
 --- a/frameworks/base/core/res/res/values/config.xml
 +++ b/frameworks/base/core/res/res/values/config.xml
-@@ -529,6 +529,9 @@
+@@ -529,6 +529,12 @@
      <!-- If this is true, the message that USB is only being used for charging will be shown. -->
      <bool name="config_usbChargingMessage">true</bool>
  
 +    <!-- If this is true, USB defaults to DeviceAsWebcam/UVC instead of charging/data prompts. -->
 +    <bool name="config_usbDefaultToUvc">false</bool>
 +
++    <!-- If this is true, secure wireless debugging is enabled at boot and after Wi-Fi reconnects. -->
++    <bool name="config_adbWifiAutoEnable">false</bool>
++
      <!-- Set this true only if the device has separate attention and notification lights. -->
      <bool name="config_useAttentionLight">false</bool>
  
 diff --git a/frameworks/base/core/res/res/values/symbols.xml b/frameworks/base/core/res/res/values/symbols.xml
-index f47032321f01ff98b83663a34dc561be0ae9d764..205097c9f75aace62decac49e59de395adfb7d36 100644
+index f47032321f01ff98b83663a34dc561be0ae9d764..6fdc21855482050bbe484bfcdf3a21c2cc07e341 100644
 --- a/frameworks/base/core/res/res/values/symbols.xml
 +++ b/frameworks/base/core/res/res/values/symbols.xml
-@@ -2045,6 +2045,7 @@
+@@ -2045,6 +2045,8 @@
    <java-symbol type="bool" name="config_sf_limitedAlpha" />
    <java-symbol type="bool" name="config_unplugTurnsOnScreen" />
    <java-symbol type="bool" name="config_usbChargingMessage" />
 +  <java-symbol type="bool" name="config_usbDefaultToUvc" />
++  <java-symbol type="bool" name="config_adbWifiAutoEnable" />
    <java-symbol type="bool" name="config_skipScreenOnBrightnessRamp" />
    <java-symbol type="bool" name="config_allowAutoBrightnessWhileDozing" />
    <java-symbol type="bool" name="config_allowTheaterModeWakeFromUnplug" />
-diff --git a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
-index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171b853da9c 100644
---- a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
-+++ b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
-@@ -333,6 +333,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
-     /** Called when a user is unlocked. */
-     public void onUnlockUser(int userHandle) {
-         onKeyguardStateChanged(false);
-+        if (userHandle == ActivityManager.getCurrentUser()) {
-+            mHandler.sendEmptyMessage(MSG_USER_UNLOCKED_AFTER_BOOT);
+diff --git a/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java b/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
+index a73a991bc6a64dbeb5a2e23a25e28bf6a4911b03..a380f17bc9e9cae8f4508ed230a0b77d68e71209 100644
+--- a/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
++++ b/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
+@@ -145,6 +145,7 @@ public class AdbDebuggingManager {
+ 
+     private final Context mContext;
+     private final ContentResolver mContentResolver;
++    private final boolean mAutoEnableAdbWifi;
+     @VisibleForTesting final AdbDebuggingHandler mHandler;
+     @Nullable private AdbDebuggingThread mThread;
+     private boolean mAdbUsbEnabled = false;
+@@ -158,6 +159,7 @@ public class AdbDebuggingManager {
+ 
+     private static final String WIFI_PERSISTENT_CONFIG_PROPERTY =
+             "persist.adb.tls_server.enable";
++    private static final long ADB_WIFI_RETRY_INTERVAL_MS = 2_000;
+     private static final String WIFI_PERSISTENT_GUID =
+             "persist.adb.wifi.guid";
+     private static final int PAIRING_CODE_LENGTH = 6;
+@@ -199,6 +201,8 @@ public class AdbDebuggingManager {
+             Ticker ticker) {
+         mContext = context;
+         mContentResolver = mContext.getContentResolver();
++        mAutoEnableAdbWifi = context.getResources().getBoolean(
++                com.android.internal.R.bool.config_adbWifiAutoEnable);
+         mConfirmComponent = confirmComponent;
+         mUserKeyFile = testUserKeyFile;
+         mTempKeysFile = tempKeysFile;
+@@ -657,6 +661,18 @@ public class AdbDebuggingManager {
+         private boolean mAdbNotificationShown;
+ 
+         private final BroadcastReceiver mBroadcastReceiver = new BroadcastReceiver() {
++            private void handleNetworkLoss(boolean reconnectImmediately) {
++                if (!mAutoEnableAdbWifi) {
++                    Settings.Global.putInt(
++                            mContentResolver, Settings.Global.ADB_WIFI_ENABLED, 0);
++                    return;
++                }
++                sendEmptyMessage(MSG_ADBDWIFI_DISABLE);
++                removeMessages(MSG_ADBDWIFI_ENABLE);
++                sendEmptyMessageDelayed(MSG_ADBDWIFI_ENABLE,
++                        reconnectImmediately ? 0 : ADB_WIFI_RETRY_INTERVAL_MS);
++            }
++
+             @Override
+             public void onReceive(Context context, Intent intent) {
+                 String action = intent.getAction();
+@@ -667,8 +683,7 @@ public class AdbDebuggingManager {
+                             WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_DISABLED);
+                     if (state == WifiManager.WIFI_STATE_DISABLED) {
+                         Slog.i(TAG, "Wifi disabled. Disabling adbwifi.");
+-                        Settings.Global.putInt(mContentResolver,
+-                                Settings.Global.ADB_WIFI_ENABLED, 0);
++                        handleNetworkLoss(false);
+                     }
+                 } else if (WifiManager.NETWORK_STATE_CHANGED_ACTION.equals(action)) {
+                     // We only care about wifi type connections
+@@ -678,8 +693,7 @@ public class AdbDebuggingManager {
+                         // Check for network disconnect
+                         if (!networkInfo.isConnected()) {
+                             Slog.i(TAG, "Network disconnected. Disabling adbwifi.");
+-                            Settings.Global.putInt(mContentResolver,
+-                                    Settings.Global.ADB_WIFI_ENABLED, 0);
++                            handleNetworkLoss(false);
+                             return;
+                         }
+ 
+@@ -689,8 +703,7 @@ public class AdbDebuggingManager {
+                         if (wifiInfo == null || wifiInfo.getNetworkId() == -1) {
+                             Slog.i(TAG, "Not connected to any wireless network."
+                                     + " Not enabling adbwifi.");
+-                            Settings.Global.putInt(mContentResolver,
+-                                    Settings.Global.ADB_WIFI_ENABLED, 0);
++                            handleNetworkLoss(false);
+                             return;
+                         }
+ 
+@@ -700,14 +713,12 @@ public class AdbDebuggingManager {
+                             if (TextUtils.isEmpty(bssid)) {
+                                 Slog.e(TAG,
+                                         "Unable to get the wifi ap's BSSID. Disabling adbwifi.");
+-                                Settings.Global.putInt(mContentResolver,
+-                                        Settings.Global.ADB_WIFI_ENABLED, 0);
++                                handleNetworkLoss(false);
+                                 return;
+                             }
+                             if (!TextUtils.equals(bssid, mAdbConnectionInfo.getBSSID())) {
+                                 Slog.i(TAG, "Detected wifi network change. Disabling adbwifi.");
+-                                Settings.Global.putInt(mContentResolver,
+-                                        Settings.Global.ADB_WIFI_ENABLED, 0);
++                                handleNetworkLoss(true);
+                             }
+                         }
+                     }
+@@ -717,6 +728,21 @@ public class AdbDebuggingManager {
+ 
+         private static final String ADB_NOTIFICATION_CHANNEL_ID_TV = "usbdevicemanager.adb.tv";
+ 
++        private void stopConnectionPortPoller() {
++            if (mConnectionPortPoller == null) {
++                return;
++            }
++            mConnectionPortPoller.cancelAndWait();
++            mConnectionPortPoller = null;
 +        }
++
++        private void restartConnectionPortPoller() {
++            stopConnectionPortPoller();
++            mConnectionPortPoller =
++                    new AdbDebuggingManager.AdbConnectionPortPoller(mPortListener);
++            mConnectionPortPoller.start();
++        }
++
+         private boolean isTv() {
+             return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_LEANBACK);
+         }
+@@ -1072,8 +1098,16 @@ public class AdbDebuggingManager {
+ 
+                     AdbConnectionInfo currentInfo = getCurrentWifiApInfo();
+                     if (currentInfo == null) {
+-                        Settings.Global.putInt(mContentResolver,
+-                                Settings.Global.ADB_WIFI_ENABLED, 0);
++                        if (mAutoEnableAdbWifi) {
++                            Settings.Global.putInt(mContentResolver,
++                                    Settings.Global.ADB_WIFI_ENABLED, 1);
++                            removeMessages(MSG_ADBDWIFI_ENABLE);
++                            sendEmptyMessageDelayed(
++                                    MSG_ADBDWIFI_ENABLE, ADB_WIFI_RETRY_INTERVAL_MS);
++                        } else {
++                            Settings.Global.putInt(mContentResolver,
++                                    Settings.Global.ADB_WIFI_ENABLED, 0);
++                        }
+                         break;
+                     }
+ 
+@@ -1094,14 +1128,12 @@ public class AdbDebuggingManager {
+                     mContext.registerReceiver(mBroadcastReceiver, intentFilter);
+ 
+                     SystemProperties.set(WIFI_PERSISTENT_CONFIG_PROPERTY, "1");
+-                    mConnectionPortPoller =
+-                            new AdbDebuggingManager.AdbConnectionPortPoller(mPortListener);
+-                    mConnectionPortPoller.start();
++                    restartConnectionPortPoller();
+ 
+                     startAdbDebuggingThread();
+                     mAdbWifiEnabled = true;
+ 
+-                    if (DEBUG) Slog.i(TAG, "adb start wireless adb");
++                    Slog.i(TAG, "CaCamOS wireless ADB enabled on " + currentInfo.getSSID());
+                     break;
+                 }
+                 case MSG_ADBDWIFI_DISABLE:
+@@ -1111,6 +1143,10 @@ public class AdbDebuggingManager {
+                     mAdbWifiEnabled = false;
+                     setAdbConnectionInfo(null);
+                     mContext.unregisterReceiver(mBroadcastReceiver);
++                    if (mAutoEnableAdbWifi) {
++                        SystemProperties.set(WIFI_PERSISTENT_CONFIG_PROPERTY, "0");
++                    }
++                    stopConnectionPortPoller();
+ 
+                     if (mThread != null) {
+                         mThread.sendResponse(MSG_DISABLE_ADBDWIFI);
+@@ -1144,9 +1180,7 @@ public class AdbDebuggingManager {
+                     mContext.registerReceiver(mBroadcastReceiver, intentFilter);
+ 
+                     SystemProperties.set(WIFI_PERSISTENT_CONFIG_PROPERTY, "1");
+-                    mConnectionPortPoller =
+-                            new AdbDebuggingManager.AdbConnectionPortPoller(mPortListener);
+-                    mConnectionPortPoller.start();
++                    restartConnectionPortPoller();
+ 
+                     startAdbDebuggingThread();
+                     mAdbWifiEnabled = true;
+@@ -1239,6 +1273,7 @@ public class AdbDebuggingManager {
+                     synchronized (mAdbConnectionInfo) {
+                         mAdbConnectionInfo.setPort(port);
+                     }
++                    Slog.i(TAG, "CaCamOS wireless ADB listening on port " + port);
+                     Settings.Global.putInt(mContentResolver,
+                             Settings.Global.ADB_WIFI_ENABLED, 1);
+                     break;
+@@ -1247,33 +1282,34 @@ public class AdbDebuggingManager {
+                     if (!mAdbWifiEnabled) {
+                         break;
+                     }
++                    if (mAutoEnableAdbWifi) {
++                        Settings.Global.putInt(mContentResolver,
++                                Settings.Global.ADB_WIFI_ENABLED, 1);
++                        removeMessages(MSG_ADBDWIFI_ENABLE);
++                        sendEmptyMessage(MSG_ADBDWIFI_DISABLE);
++                        sendEmptyMessageDelayed(
++                                MSG_ADBDWIFI_ENABLE, ADB_WIFI_RETRY_INTERVAL_MS);
++                        break;
++                    }
+                     int port = (int) msg.obj;
+                     onAdbdWifiServerDisconnected(port);
+                     Settings.Global.putInt(mContentResolver,
+                             Settings.Global.ADB_WIFI_ENABLED, 0);
+                     stopAdbDebuggingThread();
+-                    if (mConnectionPortPoller != null) {
+-                        mConnectionPortPoller.cancelAndWait();
+-                        mConnectionPortPoller = null;
+-                    }
++                    stopConnectionPortPoller();
+                     break;
+                 }
+                 case MSG_ADBD_SOCKET_CONNECTED: {
+                     if (DEBUG) Slog.d(TAG, "adbd socket connected");
+                     if (mAdbWifiEnabled) {
+                         // In scenarios where adbd is restarted, the tls port may change.
+-                        mConnectionPortPoller =
+-                                new AdbDebuggingManager.AdbConnectionPortPoller(mPortListener);
+-                        mConnectionPortPoller.start();
++                        restartConnectionPortPoller();
+                     }
+                     break;
+                 }
+                 case MSG_ADBD_SOCKET_DISCONNECTED: {
+                     if (DEBUG) Slog.d(TAG, "adbd socket disconnected");
+-                    if (mConnectionPortPoller != null) {
+-                        mConnectionPortPoller.cancelAndWait();
+-                        mConnectionPortPoller = null;
+-                    }
++                    stopConnectionPortPoller();
+                     if (mAdbWifiEnabled) {
+                         // In scenarios where adbd is restarted, the tls port may change.
+                         onAdbdWifiServerDisconnected(-1);
+@@ -1421,6 +1457,9 @@ public class AdbDebuggingManager {
+         }
+ 
+         private boolean verifyWifiNetwork(String bssid, String ssid) {
++            if (mAutoEnableAdbWifi) {
++                return true;
++            }
+             // Check against a list of user-trusted networks.
+             if (mAdbKeyStore.isTrustedNetwork(bssid)) {
+                 return true;
+diff --git a/frameworks/base/services/core/java/com/android/server/adb/AdbService.java b/frameworks/base/services/core/java/com/android/server/adb/AdbService.java
+index 55d8dba69626bc8976af1fc598fddc71591122c1..2d5ec71293ecdcb0d4fabe4212e0f366a5387292 100644
+--- a/frameworks/base/services/core/java/com/android/server/adb/AdbService.java
++++ b/frameworks/base/services/core/java/com/android/server/adb/AdbService.java
+@@ -19,9 +19,11 @@ import static com.android.internal.util.function.pooled.PooledLambda.obtainMessa
+ 
+ import android.annotation.NonNull;
+ import android.annotation.UserIdInt;
++import android.content.BroadcastReceiver;
+ import android.content.ContentResolver;
+ import android.content.Context;
+ import android.content.Intent;
++import android.content.IntentFilter;
+ import android.content.pm.PackageManager;
+ import android.database.ContentObserver;
+ import android.debug.AdbManager;
+@@ -33,7 +35,9 @@ import android.debug.IAdbManager;
+ import android.debug.IAdbTransport;
+ import android.debug.PairDevice;
+ import android.hardware.usb.UsbManager;
++import android.net.NetworkInfo;
+ import android.net.Uri;
++import android.net.wifi.WifiManager;
+ import android.os.Binder;
+ import android.os.IBinder;
+ import android.os.ParcelFileDescriptor;
+@@ -234,6 +238,7 @@ public class AdbService extends IAdbManager.Stub {
+ 
+     private final Context mContext;
+     private final ContentResolver mContentResolver;
++    private final boolean mAutoEnableAdbWifi;
+     private final ArrayMap<IBinder, IAdbTransport> mTransports = new ArrayMap<>();
+ 
+     private boolean mIsAdbUsbEnabled;
+@@ -241,16 +246,51 @@ public class AdbService extends IAdbManager.Stub {
+     private AdbDebuggingManager mDebuggingManager;
+ 
+     private ContentObserver mObserver;
++    private final BroadcastReceiver mWifiConnectionReceiver = new BroadcastReceiver() {
++        @Override
++        public void onReceive(Context context, Intent intent) {
++            NetworkInfo networkInfo = intent.getParcelableExtra(
++                    WifiManager.EXTRA_NETWORK_INFO, NetworkInfo.class);
++            if (networkInfo == null || !networkInfo.isConnected()) {
++                return;
++            }
++            try {
++                Settings.Global.putInt(
++                        context.getContentResolver(), Settings.Global.ADB_WIFI_ENABLED, 1);
++            } catch (SecurityException e) {
++                Slog.d(TAG, "Wireless debugging is restricted.");
++                return;
++            }
++            FgThread.getHandler().post(AdbService.this::enableAdbWifiAfterNetworkConnect);
++        }
++    };
+ 
+     private AdbService(Context context) {
+         mContext = context;
+         mContentResolver = context.getContentResolver();
++        mAutoEnableAdbWifi = context.getResources().getBoolean(
++                com.android.internal.R.bool.config_adbWifiAutoEnable);
+         mDebuggingManager = new AdbDebuggingManager(context);
+ 
+         registerContentObservers();
++        if (mAutoEnableAdbWifi) {
++            IntentFilter filter = new IntentFilter(WifiManager.NETWORK_STATE_CHANGED_ACTION);
++            mContext.registerReceiver(mWifiConnectionReceiver, filter);
++        }
+         LocalServices.addService(AdbManagerInternal.class, new AdbManagerInternalImpl());
      }
  
-     public UsbDeviceManager(Context context, UsbAlsaManager alsaManager,
-@@ -642,6 +645,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
++    private void enableAdbWifiAfterNetworkConnect() {
++        if (!mIsAdbWifiEnabled) {
++            setAdbEnabled(true, AdbTransportType.WIFI);
++            return;
++        }
++        startAdbd();
++        if (mDebuggingManager != null) {
++            mDebuggingManager.setAdbEnabled(true, AdbTransportType.WIFI);
++        }
++    }
++
+     /**
+      * Called in response to {@code SystemService.PHASE_ACTIVITY_MANAGER_READY} from {@code
+      * SystemServer}.
+@@ -268,8 +308,11 @@ public class AdbService extends IAdbManager.Stub {
+         boolean shouldEnableAdbUsb = mIsAdbUsbEnabled
+                 || SystemProperties.getBoolean(
+                         TestHarnessModeService.TEST_HARNESS_MODE_PROPERTY, false);
+-        mIsAdbWifiEnabled = "1".equals(
++        mIsAdbWifiEnabled = mAutoEnableAdbWifi || "1".equals(
+                 SystemProperties.get(WIFI_PERSISTENT_CONFIG_PROPERTY, "0"));
++        if (mAutoEnableAdbWifi) {
++            SystemProperties.set(WIFI_PERSISTENT_CONFIG_PROPERTY, "1");
++        }
+ 
+         // make sure the ADB_ENABLED setting value matches the current state
+         try {
+@@ -288,6 +331,9 @@ public class AdbService extends IAdbManager.Stub {
+      */
+     public void bootCompleted() {
+         if (DEBUG) Slog.d(TAG, "boot completed");
++        if (mIsAdbWifiEnabled) {
++            startAdbd();
++        }
+         if (mDebuggingManager != null) {
+             mDebuggingManager.setAdbEnabled(mIsAdbUsbEnabled, AdbTransportType.USB);
+             mDebuggingManager.setAdbEnabled(mIsAdbWifiEnabled, AdbTransportType.WIFI);
+diff --git a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
+index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a278f27b14e 100644
+--- a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
++++ b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
+@@ -642,6 +642,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
          private final Context mContext;
          private final UsbAlsaManager mUsbAlsaManager;
          private final UsbPermissionManager mPermissionManager;
@@ -60,7 +402,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
          private NotificationManager mNotificationManager;
  
          /**
-@@ -694,6 +699,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -694,6 +696,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              mUsbAlsaManager = alsaManager;
              mPermissionManager = permissionManager;
              mContentResolver = context.getContentResolver();
@@ -69,7 +411,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
  
              mCurrentUser = ActivityManager.getCurrentUser();
              mScreenLocked = true;
-@@ -1181,6 +1188,29 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1181,6 +1185,29 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              setEnabledFunctions(mScreenUnlockedFunctions, false, operationId);
          }
  
@@ -78,7 +420,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
 +        }
 +
 +        protected boolean shouldDefaultToUvc() {
-+            return isDefaultToUvcConfigured() && mUserUnlockedAfterBoot && !mDefaultUvcFailed;
++            return isDefaultToUvcConfigured() && !mDefaultUvcFailed;
 +        }
 +
 +        protected void markDefaultUvcFailed() {
@@ -99,12 +441,15 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
          private static class AdbTransport extends IAdbTransport.Stub {
              private final UsbHandler mHandler;
  
-@@ -1205,6 +1235,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1205,6 +1232,12 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              if (functions == UsbManager.FUNCTION_NONE) {
                  return getChargingFunctions();
              }
 +            if ((functions & UsbManager.FUNCTION_UVC) != 0) {
 +                return UsbManager.FUNCTION_UVC;
++            }
++            if (isDefaultToUvcConfigured()) {
++                return functions & ~UsbManager.FUNCTION_ADB;
 +            }
              if (isAdbEnabled()) {
                  return functions | UsbManager.FUNCTION_ADB;
@@ -156,19 +501,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
                      }
                      break;
                  }
-@@ -1500,6 +1537,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
-                         break;
-                     }
-                     mUserUnlockedAfterBoot = true;
-+                    operationId = sUsbOperationCount.incrementAndGet();
-+                    if (isDefaultToUvcConfigured() && mBootCompleted
-+                            && mCurrentUsbFunctionsReceived && mSystemReady) {
-+                        setDefaultFunctions(operationId);
-+                    }
-                     if (mCurrentUsbFunctionsReceived && mUserUnlockedAfterBoot) {
-                         attachAccessoryAfterBoot();
-                     }
-@@ -1535,7 +1577,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1535,7 +1572,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                          && mScreenUnlockedFunctions != UsbManager.FUNCTION_NONE) {
                      setScreenUnlockedFunctions(operationId);
                  } else {
@@ -177,7 +510,17 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
                  }
                  if (!Flags.checkUserActionUnlocked()) {
                      attachAccessoryAfterBoot();
-@@ -1784,6 +1826,19 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1771,6 +1808,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+         }
+ 
+         protected long getChargingFunctions() {
++            if (isDefaultToUvcConfigured()) {
++                return UsbManager.FUNCTION_NONE;
++            }
+             // if ADB is enabled, reset functions to ADB
+             // else enable MTP as usual.
+             if (isAdbEnabled()) {
+@@ -1784,6 +1824,19 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              SystemProperties.set(prop, val);
          }
  
@@ -197,7 +540,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
          protected String getSystemProperty(String prop, String def) {
              return SystemProperties.get(prop, def);
          }
-@@ -2077,6 +2132,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2077,6 +2130,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
  
          private void setUsbConfig(String config) {
              if (DEBUG) Slog.d(TAG, "setUsbConfig(" + config + ")");
@@ -207,7 +550,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
              /**
               * set the new configuration
               * we always set it due to b/23631400, where adbd was getting killed
-@@ -2111,6 +2169,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2111,6 +2167,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                  return;
              }
  
@@ -218,17 +561,20 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
              /**
               * Didn't work.  Try to revert changes.
               * We always reapply the policy in case certain constraints changed such as
-@@ -2158,6 +2220,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2158,6 +2218,12 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              if (functions == null) {
                  functions = "";
              }
 +            if (containsFunction(functions, UsbManager.USB_FUNCTION_UVC)) {
 +                return UsbManager.USB_FUNCTION_UVC;
 +            }
++            if (isDefaultToUvcConfigured()) {
++                return removeFunction(functions, UsbManager.USB_FUNCTION_ADB);
++            }
              if (isAdbEnabled()) {
                  functions = addFunction(functions, UsbManager.USB_FUNCTION_ADB);
              } else {
-@@ -2414,6 +2479,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2414,6 +2480,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                      operationId = sUsbOperationCount.incrementAndGet();
                      Slog.e(TAG, "Set functions timed out! no reply from usb hal"
                                  + " ,operationId:" + operationId);
@@ -240,7 +586,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
                      if (msg.arg1 != 1) {
                          // Set this since default function may be selected from Developer options
                          setEnabledFunctions(mScreenUnlockedFunctions, false, operationId);
-@@ -2439,6 +2509,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2439,6 +2510,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                       * Dont force to default when the configuration is already set to default.
                       */
                      operationId = sUsbOperationCount.incrementAndGet();
@@ -252,7 +598,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
                      if (msg.arg1 != 1) {
                          if (mCurrentFunctions == UsbManager.FUNCTION_ACCESSORY) {
                              notifyAccessoryModeExit(operationId);
-@@ -2531,6 +2606,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2531,6 +2607,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              if (status == Status.SUCCESS) {
                  mCurrentFunctionsApplied = true;
              } else if (!mChargingFunctions) {
@@ -262,7 +608,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
                  Slog.e(TAG, "Setting default fuctions");
                  sendEmptyMessage(MSG_SET_CHARGING_FUNCTIONS);
              }
-@@ -2556,6 +2634,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2556,6 +2635,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              removeMessages(MSG_SET_FUNCTIONS_TIMEOUT);
              removeMessages(MSG_SET_CHARGING_FUNCTIONS);
  
@@ -272,18 +618,10 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..55b9ae016468dc824fcd74d295f4e171
                  if (mUsbGadgetHal == null) {
                      Slog.e(TAG, "setUsbConfig mUsbGadgetHal is null");
 diff --git a/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java b/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java
-index c2d0f7c05b9152029ac13157ec5ad2446970fb89..7163caa7a767d6a450608396787b6bedb872370b 100644
+index c2d0f7c05b9152029ac13157ec5ad2446970fb89..9f1a135e4b1870d3484843696e752c3f3d960662 100644
 --- a/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java
 +++ b/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java
-@@ -89,6 +89,7 @@ public class UsbHandlerTest {
-     private static final int MSG_UPDATE_USER_RESTRICTIONS = 6;
-     private static final int MSG_SET_SCREEN_UNLOCKED_FUNCTIONS = 12;
-     private static final int MSG_UPDATE_SCREEN_LOCK = 13;
-+    private static final int MSG_USER_UNLOCKED_AFTER_BOOT = 24;
- 
-     private Map<String, String> mMockProperties;
-     private Map<String, Integer> mMockGlobalSettings;
-@@ -96,6 +97,7 @@ public class UsbHandlerTest {
+@@ -96,6 +96,7 @@ public class UsbHandlerTest {
  
      private class MockUsbHandler extends UsbDeviceManager.UsbHandler {
          boolean mIsUsbTransferAllowed;
@@ -291,7 +629,7 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..7163caa7a767d6a450608396787b6bed
          Intent mBroadcastedIntent;
  
          MockUsbHandler(Looper looper, Context context, UsbDeviceManager deviceManager,
-@@ -135,6 +137,15 @@ public class UsbHandlerTest {
+@@ -135,6 +136,15 @@ public class UsbHandlerTest {
              return mIsUsbTransferAllowed;
          }
  
@@ -307,7 +645,7 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..7163caa7a767d6a450608396787b6bed
          @Override
          protected SharedPreferences getPinnedSharedPrefs(Context context) {
              return mSharedPreferences;
-@@ -248,6 +259,27 @@ public class UsbHandlerTest {
+@@ -248,6 +258,39 @@ public class UsbHandlerTest {
          assertEquals(UsbManager.FUNCTION_NCM, mUsbHandler.getEnabledFunctions() & rndisPlusNcm);
      }
  
@@ -332,22 +670,31 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..7163caa7a767d6a450608396787b6bed
 +                        UsbManager.FUNCTION_UVC | UsbManager.FUNCTION_ADB));
 +    }
 +
++    @SmallTest
++    @Test
++    public void getAppliedFunctions_cacamOsNeverAddsUsbAdb() {
++        mUsbHandler.mDefaultToUvc = true;
++        when(mAdbManagerInternal.isAdbEnabled(eq(AdbTransportType.USB))).thenReturn(true);
++
++        assertEquals(UsbManager.FUNCTION_NONE,
++                mUsbHandler.getAppliedFunctions(UsbManager.FUNCTION_NONE));
++        assertEquals(UsbManager.FUNCTION_MTP,
++                mUsbHandler.getAppliedFunctions(UsbManager.FUNCTION_MTP));
++    }
++
      @SmallTest
      @Test
      public void enableAdb() {
-@@ -293,6 +325,33 @@ public class UsbHandlerTest {
+@@ -293,6 +336,29 @@ public class UsbHandlerTest {
          assertEquals(mUsbHandler.getEnabledFunctions(), UsbManager.FUNCTION_NONE);
      }
  
 +    @SmallTest
 +    @Test
-+    public void bootCompletedDefaultsToUvcAfterUserUnlock() {
++    public void bootCompletedDefaultsToUvcBeforeUserUnlock() {
 +        mUsbHandler.mDefaultToUvc = true;
 +
 +        sendBootCompleteMessages(mUsbHandler);
-+        assertEquals(UsbManager.FUNCTION_NONE, mUsbHandler.getEnabledFunctions());
-+
-+        mUsbHandler.handleMessage(mUsbHandler.obtainMessage(MSG_USER_UNLOCKED_AFTER_BOOT));
 +
 +        assertEquals(UsbManager.FUNCTION_UVC, mUsbHandler.getEnabledFunctions());
 +    }
@@ -357,7 +704,6 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..7163caa7a767d6a450608396787b6bed
 +    public void failedDefaultUvcKeepsRecoverableUsbMode() {
 +        mUsbHandler.mDefaultToUvc = true;
 +        sendBootCompleteMessages(mUsbHandler);
-+        mUsbHandler.handleMessage(mUsbHandler.obtainMessage(MSG_USER_UNLOCKED_AFTER_BOOT));
 +        assertEquals(UsbManager.FUNCTION_UVC, mUsbHandler.getEnabledFunctions());
 +
 +        mUsbHandler.failDefaultUvc();
@@ -369,7 +715,7 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..7163caa7a767d6a450608396787b6bed
      @SmallTest
      @Test
      public void userSwitchedDisablesMtp() {
-@@ -332,6 +391,22 @@ public class UsbHandlerTest {
+@@ -332,6 +398,21 @@ public class UsbHandlerTest {
          assertEquals(mUsbHandler.getEnabledFunctions(), UsbManager.FUNCTION_NONE);
      }
  
@@ -378,7 +724,6 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..7163caa7a767d6a450608396787b6bed
 +    public void disconnectResetsToUvcWhenConfigured() {
 +        mUsbHandler.mDefaultToUvc = true;
 +        sendBootCompleteMessages(mUsbHandler);
-+        mUsbHandler.handleMessage(mUsbHandler.obtainMessage(MSG_USER_UNLOCKED_AFTER_BOOT));
 +
 +        mUsbHandler.handleMessage(mUsbHandler.obtainMessage(MSG_SET_CURRENT_FUNCTIONS,
 +                UsbManager.FUNCTION_MTP));

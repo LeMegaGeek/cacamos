@@ -1,23 +1,2242 @@
 diff --git a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-index 2af999935683ce57d7d3ac60319d1ec15bc82139..d50a83e57607e55ce48152d7856a8b371707f1ac 100644
+index 2af999935683ce57d7d3ac60319d1ec15bc82139..25ac8590b92b00156b60466c4c90797afec4ba3d 100644
 --- a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 +++ b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-@@ -14,9 +14,11 @@
-          android:label="@string/app_label">
+@@ -9,18 +9,25 @@
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+     <uses-permission android:name="android.permission.CAMERA"/>
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
++    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+ 
+     <application
+-         android:label="@string/app_label">
++        android:label="@string/app_label">
          <receiver android:name="com.android.deviceaswebcam.DeviceAsWebcamReceiverImpl"
++             android:directBootAware="true"
               android:exported="true"
 +             android:permission="android.permission.MANAGE_USB"
               android:singleUser="true">
              <intent-filter>
++                <action android:name="android.intent.action.BOOT_COMPLETED"/>
++                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
                  <action android:name="android.hardware.usb.action.USB_STATE"/>
 +                <action android:name="com.android.DeviceAsWebcam.action.PREPARE_UVC"/>
              </intent-filter>
          </receiver>
  
+         <activity android:name="com.android.deviceaswebcam.DeviceAsWebcamPreview"
++            android:directBootAware="true"
+             android:excludeFromRecents="true"
+             android:screenOrientation="user"
+             android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|smallestScreenSize"
+@@ -32,6 +39,7 @@
+ 
+         <service
+             android:name="com.android.deviceaswebcam.DeviceAsWebcamFgServiceImpl"
++            android:directBootAware="true"
+             android:foregroundServiceType="camera"
+             android:singleUser="true"/>
+     </application>
+diff --git a/packages/services/DeviceAsWebcam/impl/res/values/themes.xml b/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
+index 3a1b81eb6e64a02258025e5a05fc2121a44ff005..6c8306bbcf110061396c8f1b8c08d6fc8708860a 100644
+--- a/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
++++ b/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
+@@ -19,8 +19,8 @@
+         <item name="android:windowActionBar">false</item>
+         <item name="android:windowActionBarOverlay">true</item>
+         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+-        <item name="android:windowFullscreen">true</item>
+-        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
++        <item name="android:windowFullscreen">false</item>
++        <item name="android:windowLayoutInDisplayCutoutMode">default</item>
+         <item name="android:windowTitleSize">0dp</item>
+     </style>
+-</resources>
+\ No newline at end of file
++</resources>
+diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
+index 832164cd0524d6244e452b994dec40db00a39acf..2f6115a47442cb5f020360be16850c7dcd7f1ef5 100644
+--- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
++++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
+@@ -63,10 +63,13 @@ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Comparator;
+ import java.util.List;
++import java.util.Map;
+ import java.util.Objects;
+ import java.util.concurrent.ConcurrentHashMap;
+-import java.util.concurrent.Executor;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.ExecutorService;
+ import java.util.concurrent.Executors;
++import java.util.concurrent.RejectedExecutionException;
+ import java.util.concurrent.ScheduledExecutorService;
+ import java.util.concurrent.TimeUnit;
+ import java.util.concurrent.atomic.AtomicBoolean;
+@@ -104,6 +107,12 @@ public class CameraController {
+     };
+ 
+     private static final int MAX_BUFFERS = 4;
++    private static final long CAMERA_OPERATION_TIMEOUT_MS = 5000;
++    private static final long CONTROLLER_SHUTDOWN_TIMEOUT_MS =
++            CAMERA_OPERATION_TIMEOUT_MS + 2000;
++    private static final long THREAD_SHUTDOWN_TIMEOUT_MS = 1000;
++    private static final long FRAME_RATE_EARLY_TOLERANCE_NS =
++            TimeUnit.MILLISECONDS.toNanos(2);
+     // The ratio to the active array size that will be used to determine the metering rectangle
+     // size.
+     private static final float METERING_RECTANGLE_SIZE_RATIO = 0.15f;
+@@ -119,6 +128,7 @@ public class CameraController {
+     private ImageReader mImgReader;
+     private Object mImgReaderLock = new Object();
+     private ImageWriter mImageWriter;
++    private long mNextWebcamFrameTimestampNs = Long.MIN_VALUE;
+ 
+     // current camera session state
+     private CameraStreamingState mCurrentState = CameraStreamingState.NO_STREAMING;
+@@ -132,10 +142,11 @@ public class CameraController {
+     private final WebcamControllerImpl mWebcamController;
+     private CaptureRequest.Builder mPreviewRequestBuilder;
+     private CameraManager mCameraManager;
+-    private CameraDevice mCameraDevice;
++    private volatile CameraDevice mCameraDevice;
+     private Handler mImageReaderHandler;
+-    private Executor mCameraCallbacksExecutor;
+-    private Executor mServiceEventsExecutor;
++    private HandlerThread mImageReaderThread;
++    private ExecutorService mCameraCallbacksExecutor;
++    private ExecutorService mServiceEventsExecutor;
+     private SurfaceTexture mPreviewSurfaceTexture;
+     /**
+      * Registered by the Preview Activity, and called by CameraController when preview size changes
+@@ -156,10 +167,13 @@ public class CameraController {
+     private OutputConfiguration mPreviewOutputConfiguration;
+     private OutputConfiguration mWebcamOutputConfiguration;
+     private List<OutputConfiguration> mOutputConfigurations;
+-    private CameraCaptureSession mCaptureSession;
++    private volatile CameraCaptureSession mCaptureSession;
+     private ConditionVariable mReadyToStream = new ConditionVariable();
+     private ConditionVariable mCaptureSessionReady = new ConditionVariable();
++    private volatile int mCameraOperationGeneration;
++    private volatile int mCaptureSessionGeneration;
+     private AtomicBoolean mStartCaptureWebcamStream = new AtomicBoolean(false);
++    private final AtomicBoolean mShutdown = new AtomicBoolean(false);
+     private final Object mSerializationLock = new Object();
+     // timestamp -> Image
+     private ConcurrentHashMap<Long, ImageAndBuffer> mImageMap = new ConcurrentHashMap<>();
+@@ -182,79 +196,124 @@ public class CameraController {
+     }
+ 
+     private StreamConfigs mStreamConfigs;
+-    private CameraDevice.StateCallback mCameraStateCallback = new CameraDevice.StateCallback() {
+-        @Override
+-        public void onOpened(@NonNull CameraDevice cameraDevice) {
+-            if (VERBOSE) {
+-                Log.v(TAG, "Camera device opened, creating capture session now");
++
++    private CameraDevice.StateCallback createCameraStateCallback(int generation) {
++        return new CameraDevice.StateCallback() {
++            @Override
++            public void onOpened(@NonNull CameraDevice cameraDevice) {
++                if (mShutdown.get() || generation != mCameraOperationGeneration) {
++                    cameraDevice.close();
++                    return;
++                }
++                if (VERBOSE) {
++                    Log.v(TAG, "Camera device opened, creating capture session now");
++                }
++                mCameraDevice = cameraDevice;
++                mReadyToStream.open();
+             }
+-            mCameraDevice = cameraDevice;
+-            mReadyToStream.open();
+-        }
+ 
+-        @Override
+-        public void onDisconnected(CameraDevice cameraDevice) {
+-            if (VERBOSE) {
+-                Log.v(TAG, "onDisconnected: " + cameraDevice.getId() +
+-                        " camera available state " +
+-                        mCameraAvailabilityState.get(cameraDevice.getId()));
++            @Override
++            public void onDisconnected(@NonNull CameraDevice cameraDevice) {
++                if (VERBOSE) {
++                    Log.v(TAG, "onDisconnected: " + cameraDevice.getId()
++                            + " camera available state "
++                            + mCameraAvailabilityState.get(cameraDevice.getId()));
++                }
++                boolean wasActive = mCameraDevice == cameraDevice;
++                cameraDevice.close();
++                if (mShutdown.get() || generation != mCameraOperationGeneration) {
++                    return;
++                }
++                mCameraDevice = null;
++                mCaptureSession = null;
++                mReadyToStream.open();
++                mCaptureSessionReady.open();
++                if (wasActive) {
++                    handleCameraDisconnected(generation);
++                }
+             }
+-            handleDisconnected();
+-        }
+ 
+-        private void handleDisconnected() {
+-            mServiceEventsExecutor.execute(() -> {
+-                synchronized (mSerializationLock) {
+-                    mCameraDevice = null;
+-                    stopStreamingAltogetherLocked(/*closeImageReader*/false);
+-                    if (mStartCaptureWebcamStream.get()) {
+-                        startShowingCameraUnavailableLogo();
+-                    }
++            @Override
++            public void onError(@NonNull CameraDevice cameraDevice, int error) {
++                Log.e(TAG, "Camera id " + cameraDevice.getId() + ": onError " + error);
++                boolean wasActive = mCameraDevice == cameraDevice;
++                cameraDevice.close();
++                if (mShutdown.get() || generation != mCameraOperationGeneration) {
++                    return;
++                }
++                mCameraDevice = null;
++                mCaptureSession = null;
++                mReadyToStream.open();
++                mCaptureSessionReady.open();
++                if (wasActive) {
++                    handleCameraDisconnected(generation);
+                 }
+-            });
+-        }
+-        @Override
+-        public void onError(@NonNull CameraDevice cameraDevice, int error) {
+-            if (VERBOSE) {
+-                Log.e(TAG, "Camera id  " + cameraDevice.getId() + ": onError " + error);
+             }
+-            mReadyToStream.open();
+-            if (mStartCaptureWebcamStream.get()) {
+-                startShowingCameraUnavailableLogo();
++        };
++    }
++
++    private void handleCameraDisconnected(int generation) {
++        executeServiceEvent(() -> {
++            synchronized (mSerializationLock) {
++                if (generation != mCameraOperationGeneration) {
++                    return;
++                }
++                stopStreamingAltogetherLocked(/*closeImageReader*/false);
++                if (mStartCaptureWebcamStream.get()) {
++                    startShowingCameraUnavailableLogoNoOffload();
++                }
+             }
+-        }
+-    };
++        });
++    }
++
+     private CameraCaptureSession.CaptureCallback mCaptureCallback =
+             new CameraCaptureSession.CaptureCallback() {};
+ 
+-    private CameraCaptureSession.StateCallback mCameraCaptureSessionCallback =
+-            new CameraCaptureSession.StateCallback() {
+-                @Override
+-                public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
+-                    if (mCameraDevice == null) {
+-                        return;
+-                    }
+-                    mCaptureSession = cameraCaptureSession;
+-                    try {
+-                        mCaptureSession.setSingleRepeatingRequest(
+-                                mPreviewRequestBuilder.build(), mCameraCallbacksExecutor,
+-                                mCaptureCallback);
+-                    } catch (CameraAccessException e) {
+-                        Log.e(TAG, "setSingleRepeatingRequest failed", e);
+-                    }
++    private CameraCaptureSession.StateCallback createCaptureSessionCallback(
++            int generation, CameraDevice expectedCameraDevice) {
++        return new CameraCaptureSession.StateCallback() {
++            @Override
++            public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
++                if (mShutdown.get()
++                        || generation != mCaptureSessionGeneration
++                        || mCameraDevice != expectedCameraDevice) {
++                    cameraCaptureSession.close();
++                    return;
++                }
++                mCaptureSession = cameraCaptureSession;
++                try {
++                    mCaptureSession.setSingleRepeatingRequest(
++                            mPreviewRequestBuilder.build(), mCameraCallbacksExecutor,
++                            mCaptureCallback);
++                } catch (CameraAccessException | IllegalStateException e) {
++                    Log.e(TAG, "setSingleRepeatingRequest failed", e);
++                    mCaptureSession.close();
++                    mCaptureSession = null;
++                } finally {
+                     mCaptureSessionReady.open();
+                 }
++            }
+ 
+-                @Override
+-                public void onConfigureFailed(@NonNull CameraCaptureSession captureSession) {
+-                    Log.e(TAG, "Failed to configure CameraCaptureSession");
++            @Override
++            public void onConfigureFailed(@NonNull CameraCaptureSession captureSession) {
++                captureSession.close();
++                if (mShutdown.get() || generation != mCaptureSessionGeneration) {
++                    return;
+                 }
+-            };
++                Log.e(TAG, "Failed to configure CameraCaptureSession");
++                mCaptureSession = null;
++                mCaptureSessionReady.open();
++            }
++        };
++    }
+ 
+     private CameraManager.AvailabilityCallback mCameraAvailabilityCallbacks =
+             new CameraManager.AvailabilityCallback() {
+         @Override
+         public void onCameraAvailable(String cameraId) {
++            if (mShutdown.get()) {
++                return;
++            }
+             mCameraAvailabilityState.put(cameraId, CameraAvailabilityState.AVAILABLE);
+             if (VERBOSE) {
+                 Log.v(TAG, "onCameraAvailable: " + cameraId);
+@@ -279,6 +338,9 @@ public class CameraController {
+ 
+         @Override
+         public void onCameraUnavailable(String cameraId) {
++            if (mShutdown.get()) {
++                return;
++            }
+             // We're unconditionally waiting for available - mStartCaptureWebcamStream will decide
+             // whether we need to do anything about it.
+             if (VERBOSE) {
+@@ -292,6 +354,9 @@ public class CameraController {
+             new ImageReader.OnImageAvailableListener() {
+                 @Override
+                 public void onImageAvailable(ImageReader reader) {
++                    if (mShutdown.get()) {
++                        return;
++                    }
+                     Image image;
+                     HardwareBuffer hardwareBuffer;
+                     long ts;
+@@ -323,12 +388,27 @@ public class CameraController {
+                         }
+                         ts = image.getTimestamp();
+                         hardwareBuffer = image.getHardwareBuffer();
++                        if (hardwareBuffer == null) {
++                            Log.e(TAG, "ImageReader returned an image without a hardware buffer");
++                            image.close();
++                            return;
++                        }
++                        if (!shouldQueueWebcamFrameLocked(ts)) {
++                            hardwareBuffer.close();
++                            image.close();
++                            return;
++                        }
++                    }
++                    if (mShutdown.get()) {
++                        hardwareBuffer.close();
++                        image.close();
++                        return;
+                     }
+                     mImageMap.put(ts, new ImageAndBuffer(image, hardwareBuffer));
+                     // Callback into DeviceAsWebcamFgService to encode image
+                     if ((!mStartCaptureWebcamStream.get())
+                             || !mWebcamController.queueImageToHost(
+-                                    hardwareBuffer, ts, getCurrentRotation() == 180)) {
++                                    hardwareBuffer, ts, getCurrentRotation())) {
+                         if (VERBOSE) {
+                             Log.v(
+                                     TAG,
+@@ -374,12 +454,34 @@ public class CameraController {
+         // Adds a listener to enable the RotationProvider so that we can get the rotation
+         // degrees info to rotate the webcam stream images.
+         mRotationProvider.addListener(mCameraCallbacksExecutor, rotation -> {
+-            if (mRotationUpdateListener != null) {
++            if (!mShutdown.get() && mRotationUpdateListener != null) {
+                 mRotationUpdateListener.onRotationUpdated(rotation);
+             }
+         });
+     }
+ 
++    private void executeServiceEvent(Runnable event) {
++        if (mShutdown.get()) {
++            return;
++        }
++        ExecutorService executor = mServiceEventsExecutor;
++        if (executor == null) {
++            Log.e(TAG, "Service events executor is not initialized");
++            return;
++        }
++        try {
++            executor.execute(() -> {
++                if (!mShutdown.get()) {
++                    event.run();
++                }
++            });
++        } catch (RejectedExecutionException e) {
++            if (!mShutdown.get()) {
++                Log.e(TAG, "Unable to schedule camera operation", e);
++            }
++        }
++    }
++
+     @Nullable
+     private CameraId fetchCameraIdFromUserPrefs(@Nullable CameraId defaultCameraId) {
+         String cameraIdString = mUserPrefs.fetchCameraId(null);
+@@ -669,6 +771,9 @@ public class CameraController {
+     }
+ 
+     public void setWebcamStreamConfig(int width, int height, int fps) {
++        if (mShutdown.get()) {
++            return;
++        }
+         if (VERBOSE) {
+             Log.v(
+                     TAG,
+@@ -680,6 +785,9 @@ public class CameraController {
+                             + fps);
+         }
+         synchronized (mSerializationLock) {
++            if (mShutdown.get()) {
++                return;
++            }
+             boolean disableVideoEncodeFlag =
+                     SystemProperties.getBoolean("ro.usb.uvc.disable_video_encode_flag", false);
+             long usage = HardwareBuffer.USAGE_CPU_READ_OFTEN;
+@@ -688,6 +796,7 @@ public class CameraController {
+             }
+             mStreamConfigs = new StreamConfigs(width, height, fps);
+             synchronized (mImgReaderLock) {
++                mNextWebcamFrameTimestampNs = Long.MIN_VALUE;
+                 if (mImgReader != null) {
+                     mImgReader.close();
+                 }
+@@ -702,6 +811,39 @@ public class CameraController {
+         }
+     }
+ 
++    /**
++     * Enforces negotiated rates below the MI8 camera pipeline's native 30 FPS.
++     *
++     * <p>The legacy camera HAL can accept a fixed 15 FPS AE range while still delivering
++     * 30 frames per second. Keep the camera request hint, but pace frames at the ImageReader
++     * boundary so the UVC cadence always matches the host's committed frame interval.
++     */
++    private boolean shouldQueueWebcamFrameLocked(long timestampNs) {
++        StreamConfigs configs = mStreamConfigs;
++        if (configs == null || configs.mFps <= 0 || configs.mFps >= 30) {
++            mNextWebcamFrameTimestampNs = Long.MIN_VALUE;
++            return true;
++        }
++
++        long intervalNs = TimeUnit.SECONDS.toNanos(1) / configs.mFps;
++        if (timestampNs <= 0
++                || mNextWebcamFrameTimestampNs == Long.MIN_VALUE
++                || timestampNs + (2 * intervalNs) < mNextWebcamFrameTimestampNs) {
++            mNextWebcamFrameTimestampNs = timestampNs + intervalNs;
++            return true;
++        }
++        if (timestampNs + FRAME_RATE_EARLY_TOLERANCE_NS
++                < mNextWebcamFrameTimestampNs) {
++            return false;
++        }
++
++        long periods = timestampNs >= mNextWebcamFrameTimestampNs
++                ? ((timestampNs - mNextWebcamFrameTimestampNs) / intervalNs) + 1
++                : 1;
++        mNextWebcamFrameTimestampNs += periods * intervalNs;
++        return true;
++    }
++
+     private void fillImageWithCameraAccessBlockedLogo(Image img) {
+         Image.Plane[] planes = img.getPlanes();
+ 
+@@ -713,7 +855,7 @@ public class CameraController {
+     private void handleOnCameraAvailable() {
+         // Offload to mServiceEventsExecutor since any camera operations which require
+         // mSerializationLock should be performed on mServiceEventsExecutor thread.
+-        mServiceEventsExecutor.execute(
++        executeServiceEvent(
+                 () -> {
+                     synchronized (mSerializationLock) {
+                         if (mCameraDevice != null) {
+@@ -732,20 +874,33 @@ public class CameraController {
+      * mServiceEventsExecutor thread
+      */
+     private void stopShowingCameraUnavailableLogo() {
+-        // destroy the executor since camera getting evicted would be a rare occurrence
++        ScheduledExecutorService executor;
++        ImageWriter imageWriter;
+         synchronized (mSerializationLock) {
+-            if (mImageWriterEventsExecutor != null) {
+-                mImageWriterEventsExecutor.shutdown();
+-            }
++            executor = mImageWriterEventsExecutor;
+             mImageWriterEventsExecutor = null;
++            imageWriter = mImageWriter;
+             mImageWriter = null;
+             mCombinedBitmapBytes = null;
+         }
++        if (executor != null) {
++            executor.shutdownNow();
++            try {
++                if (!executor.awaitTermination(1000, TimeUnit.MILLISECONDS)) {
++                    Log.w(TAG, "Timed out stopping the camera-unavailable image writer");
++                }
++            } catch (InterruptedException e) {
++                Thread.currentThread().interrupt();
++            }
++        }
++        if (imageWriter != null) {
++            imageWriter.close();
++        }
+     }
+ 
+     private void startShowingCameraUnavailableLogo() {
+-        mServiceEventsExecutor.execute(() -> {
+-           startShowingCameraUnavailableLogoNoOffload();
++        executeServiceEvent(() -> {
++            startShowingCameraUnavailableLogoNoOffload();
+         });
+     }
+ 
+@@ -755,6 +910,11 @@ public class CameraController {
+      */
+     private void startShowingCameraUnavailableLogoNoOffload() {
+         synchronized (mSerializationLock) {
++            if (mShutdown.get() || mStreamConfigs == null) {
++                Log.e(TAG, "Cannot show the unavailable-camera image without a stream config");
++                return;
++            }
++            stopShowingCameraUnavailableLogo();
+             setupBitmaps(mStreamConfigs.mWidth, mStreamConfigs.mHeight);
+             long usage = HardwareBuffer.USAGE_CPU_READ_OFTEN;
+             synchronized (mImgReaderLock) {
+@@ -773,13 +933,24 @@ public class CameraController {
+             }
+             mImageWriter = ImageWriter.newInstance(mImgReader.getSurface(), MAX_BUFFERS);
+             // In effect, the webcam stream has started
+-            mImageWriterEventsExecutor = Executors.newScheduledThreadPool(1);
+-            mImageWriterEventsExecutor.scheduleAtFixedRate(
++            ImageWriter imageWriter = mImageWriter;
++            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
++                    runnable -> new Thread(runnable, "CaCamImgWriter"));
++            mImageWriterEventsExecutor = executor;
++            executor.scheduleAtFixedRate(
+                     () -> {
+-                        Image img = mImageWriter.dequeueInputImage();
+-                        // Fill in image
+-                        fillImageWithCameraAccessBlockedLogo(img);
+-                        mImageWriter.queueInputImage(img);
++                        if (mShutdown.get()) {
++                            return;
++                        }
++                        try {
++                            Image img = imageWriter.dequeueInputImage();
++                            fillImageWithCameraAccessBlockedLogo(img);
++                            imageWriter.queueInputImage(img);
++                        } catch (IllegalStateException e) {
++                            if (!mShutdown.get()) {
++                                Log.e(TAG, "Unable to queue camera-unavailable image", e);
++                            }
++                        }
+                     },
+                     /* initialDelay= */ 0,
+                     /* period= */ 1000 / mStreamConfigs.mFps,
+@@ -790,28 +961,60 @@ public class CameraController {
+     /**
+      * Must be called with mSerializationLock held on mServiceExecutor thread.
+      */
+-    private void openCameraBlocking() {
++    private boolean openCameraBlocking() {
++        if (mShutdown.get()) {
++            return false;
++        }
+         if (mCameraManager == null) {
+             Log.e(TAG, "CameraManager is not initialized, aborting");
+-            return;
++            return false;
+         }
+         if (mCameraId == null) {
+             Log.e(TAG, "No camera is found on the device, aborting");
+-            return;
++            return false;
+         }
+         if (mCameraDevice != null) {
+             mCameraDevice.close();
+             mCameraDevice = null;
+         }
++        mReadyToStream.close();
++        int generation = ++mCameraOperationGeneration;
+         try {
+             mCameraManager.openCamera(mCameraId.mainCameraId, mCameraCallbacksExecutor,
+-                    mCameraStateCallback);
+-        } catch (CameraAccessException e) {
++                    createCameraStateCallback(generation));
++        } catch (CameraAccessException | SecurityException e) {
+             Log.e(TAG, "openCamera failed for cameraId : " + mCameraId.mainCameraId, e);
+-            startShowingCameraUnavailableLogo();
++            if (mStartCaptureWebcamStream.get()) {
++                startShowingCameraUnavailableLogo();
++            }
++            return false;
+         }
+-        mReadyToStream.block();
++        boolean callbackReceived = mReadyToStream.block(CAMERA_OPERATION_TIMEOUT_MS);
+         mReadyToStream.close();
++        if (mShutdown.get()) {
++            if (mCameraDevice != null) {
++                mCameraDevice.close();
++                mCameraDevice = null;
++            }
++            return false;
++        }
++        if (!callbackReceived || mCameraDevice == null) {
++            Log.e(TAG, callbackReceived
++                    ? "Camera open failed for " + mCameraId.mainCameraId
++                    : "Timed out while opening camera " + mCameraId.mainCameraId);
++            if (generation == mCameraOperationGeneration) {
++                ++mCameraOperationGeneration;
++            }
++            if (mCameraDevice != null) {
++                mCameraDevice.close();
++                mCameraDevice = null;
++            }
++            if (mStartCaptureWebcamStream.get()) {
++                startShowingCameraUnavailableLogo();
++            }
++            return false;
++        }
++        return true;
+     }
+ 
+     private void setupPreviewOnlyStreamLocked(SurfaceTexture previewSurfaceTexture) {
+@@ -820,7 +1023,9 @@ public class CameraController {
+ 
+     private void setupPreviewOnlyStreamLocked(Surface previewSurface) {
+         mPreviewSurface = previewSurface;
+-        openCameraBlocking();
++        if (!openCameraBlocking()) {
++            return;
++        }
+         mPreviewRequestBuilder = createInitialPreviewRequestBuilder(mPreviewSurface);
+         if (mPreviewRequestBuilder == null) {
+             return;
+@@ -976,7 +1181,7 @@ public class CameraController {
+             Consumer<Size> previewSizeChangeListener) {
+         // Started on a background thread since we don't want to be blocking either the activity's
+         // or the service's main thread (we call blocking camera open in these methods internally)
+-        mServiceEventsExecutor.execute(new Runnable() {
++        executeServiceEvent(new Runnable() {
+             @Override
+             public void run() {
+                 synchronized (mSerializationLock) {
+@@ -1006,9 +1211,9 @@ public class CameraController {
+             Log.v(TAG, "setupWebcamOnly");
+         }
+         Surface surface = mImgReader.getSurface();
+-        openCameraBlocking();
++        boolean cameraOpened = openCameraBlocking();
+         mCurrentState = CameraStreamingState.WEBCAM_STREAMING;
+-        if (mCameraDevice != null) {
++        if (cameraOpened) {
+             mPreviewRequestBuilder = createInitialPreviewRequestBuilder(surface);
+             if (mPreviewRequestBuilder == null) {
+                 Log.e(TAG, "Failed to create the webcam stream.");
+@@ -1075,12 +1280,12 @@ public class CameraController {
+ 
+         // Invokes the preview size change listener so that the preview activity can adjust its
+         // size and scale to match the new size.
+-        if (mPreviewSizeChangeListener != null) {
++        if (!mShutdown.get() && mPreviewSizeChangeListener != null) {
+             mPreviewSizeChangeListener.accept(suitablePreviewSize);
+         }
+     }
+     public void startWebcamStreaming() {
+-        mServiceEventsExecutor.execute(() -> {
++        executeServiceEvent(() -> {
+             // Started on a background thread since we don't want to be blocking the service's main
+             // thread (we call blocking camera open in these methods internally)
+             startWebcamStreamingNoOffload();
+@@ -1091,6 +1296,9 @@ public class CameraController {
+      * Starts webcam streaming. This should only be called on the service events executor thread.
+      */
+     public void startWebcamStreamingNoOffload() {
++        if (mShutdown.get()) {
++            return;
++        }
+         mStartCaptureWebcamStream.set(true);
+         synchronized (mSerializationLock) {
+             synchronized (mImgReaderLock) {
+@@ -1133,20 +1341,24 @@ public class CameraController {
+     }
+ 
+     private void stopPreviewStreamOnlyLocked() {
++        Surface previewSurface = mPreviewSurface;
+         mPreviewRequestBuilder.removeTarget(mPreviewSurface);
+         mOutputConfigurations = Arrays.asList(mWebcamOutputConfiguration);
++        mCurrentState = CameraStreamingState.WEBCAM_STREAMING;
+         createCaptureSessionBlocking();
+         mPreviewSurfaceTexture = null;
+         mPreviewSizeChangeListener = null;
+         mPreviewSurface = null;
+         mPreviewSize = null;
+-        mCurrentState = CameraStreamingState.WEBCAM_STREAMING;
++        if (previewSurface != null) {
++            previewSurface.release();
++        }
+     }
+ 
+     public void stopPreviewStreaming() {
+         // Started on a background thread since we don't want to be blocking either the activity's
+         // or the service's main thread (we call blocking camera open in these methods internally)
+-        mServiceEventsExecutor.execute(new Runnable() {
++        executeServiceEvent(new Runnable() {
+             @Override
+             public void run() {
+                 synchronized (mSerializationLock) {
+@@ -1156,6 +1368,7 @@ public class CameraController {
+                             break;
+                         case PREVIEW_STREAMING:
+                             stopStreamingAltogetherLocked();
++                            releasePreviewSurfaceLocked();
+                             break;
+                         case NO_STREAMING:
+                         case WEBCAM_STREAMING:
+@@ -1194,6 +1407,12 @@ public class CameraController {
+                 mImgReader = null;
+             }
+         }
++        ++mCameraOperationGeneration;
++        ++mCaptureSessionGeneration;
++        if (mCaptureSession != null) {
++            mCaptureSession.close();
++        }
++        mCaptureSession = null;
+         if (mCameraDevice != null) {
+             mCameraDevice.close();
+         }
+@@ -1204,10 +1423,21 @@ public class CameraController {
+         mReadyToStream.close();
+     }
+ 
++    private void releasePreviewSurfaceLocked() {
++        Surface previewSurface = mPreviewSurface;
++        mPreviewSurface = null;
++        mPreviewSurfaceTexture = null;
++        mPreviewSizeChangeListener = null;
++        mPreviewSize = null;
++        if (previewSurface != null) {
++            previewSurface.release();
++        }
++    }
++
+     public void stopWebcamStreaming() {
+         // Started on a background thread since we don't want to be blocking the service's main
+         // thread (we call blocking camera open in these methods internally)
+-        mServiceEventsExecutor.execute(new Runnable() {
++        executeServiceEvent(new Runnable() {
+             @Override
+             public void run() {
+                 mStartCaptureWebcamStream.set(false);
+@@ -1235,19 +1465,24 @@ public class CameraController {
+     }
+ 
+     private void startBackgroundThread() {
+-        HandlerThread imageReaderThread = new HandlerThread("SdkCameraFrameProviderThread");
+-        imageReaderThread.start();
+-        mImageReaderHandler = new Handler(imageReaderThread.getLooper());
++        mImageReaderThread = new HandlerThread("CaCamFrameRead");
++        mImageReaderThread.start();
++        mImageReaderHandler = new Handler(mImageReaderThread.getLooper());
+         // We need two executor threads since the surface texture add / remove calls from the fg
+         // service are going to be served on the main thread. To not wait on capture session
+         // creation, onCaptureSequenceCompleted we need a new thread to cater to preview surface
+         // addition / removal.
+         // b/277099495 has additional context.
+-        mCameraCallbacksExecutor = Executors.newSingleThreadExecutor();
+-        mServiceEventsExecutor = Executors.newSingleThreadExecutor();
++        mCameraCallbacksExecutor = Executors.newSingleThreadExecutor(
++                runnable -> new Thread(runnable, "CaCamCallbacks"));
++        mServiceEventsExecutor = Executors.newSingleThreadExecutor(
++                runnable -> new Thread(runnable, "CaCamSvcEvents"));
+     }
+ 
+     private void createCaptureSessionBlocking() {
++        if (mShutdown.get()) {
++            return;
++        }
+         if (mCameraId.physicalCameraId != null) {
+             for (OutputConfiguration config : mOutputConfigurations) {
+                 config.setPhysicalCameraId(mCameraId.physicalCameraId);
+@@ -1257,35 +1492,204 @@ public class CameraController {
+         if (mCameraDevice == null) {
+             return;
+         }
++        CameraDevice cameraDevice = mCameraDevice;
++        int generation = ++mCaptureSessionGeneration;
++        mCaptureSession = null;
++        mCaptureSessionReady.close();
+         try {
+-            mCameraDevice.createCaptureSession(
++            cameraDevice.createCaptureSession(
+                     new SessionConfiguration(
+                             SessionConfiguration.SESSION_REGULAR, mOutputConfigurations,
+-                            mCameraCallbacksExecutor, mCameraCaptureSessionCallback));
+-            mCaptureSessionReady.block();
++                            mCameraCallbacksExecutor,
++                            createCaptureSessionCallback(generation, cameraDevice)));
++            boolean configured = mCaptureSessionReady.block(CAMERA_OPERATION_TIMEOUT_MS);
+             mCaptureSessionReady.close();
+-        } catch (CameraAccessException e) {
++            if (mShutdown.get()) {
++                if (mCaptureSession != null) {
++                    mCaptureSession.close();
++                    mCaptureSession = null;
++                }
++                return;
++            }
++            if (!configured || mCaptureSession == null) {
++                Log.e(TAG, configured
++                        ? "Camera capture session configuration failed"
++                        : "Timed out while configuring the camera capture session");
++                if (mCaptureSession != null) {
++                    mCaptureSession.close();
++                    mCaptureSession = null;
++                }
++                if (generation == mCaptureSessionGeneration) {
++                    ++mCaptureSessionGeneration;
++                }
++                stopStreamingAltogetherLocked();
++                if (mStartCaptureWebcamStream.get()) {
++                    startShowingCameraUnavailableLogoNoOffload();
++                }
++            }
++        } catch (CameraAccessException | IllegalStateException e) {
+             Log.e(TAG, "createCaptureSession failed", e);
++            if (generation == mCaptureSessionGeneration) {
++                ++mCaptureSessionGeneration;
++            }
+             stopStreamingAltogetherLocked();
+-            startShowingCameraUnavailableLogoNoOffload();
++            if (mStartCaptureWebcamStream.get()) {
++                startShowingCameraUnavailableLogoNoOffload();
++            }
+         }
+     }
+ 
+     public void returnImage(long timestamp) {
+-        ImageAndBuffer imageAndBuffer = mImageMap.get(timestamp);
++        ImageAndBuffer imageAndBuffer = mImageMap.remove(timestamp);
+         if (imageAndBuffer == null) {
+             Log.e(TAG, "Image with timestamp " + timestamp +
+                     " was never encoded / already returned");
+             return;
+         }
+-        imageAndBuffer.buffer.close();
+-        imageAndBuffer.image.close();
+-        mImageMap.remove(timestamp);
++        closeImageAndBuffer(imageAndBuffer);
+         if (VERBOSE) {
+             Log.v(TAG, "Returned image " + timestamp);
+         }
+     }
+ 
++    /**
++     * Permanently releases every camera resource owned by this controller.
++     *
++     * <p>Native teardown must run first so all encoder callbacks have returned their images.
++     */
++    public void shutdown() {
++        if (!mShutdown.compareAndSet(false, true)) {
++            return;
++        }
++
++        mStartCaptureWebcamStream.set(false);
++        // Release any camera operation currently waiting for a framework callback.
++        mReadyToStream.open();
++        mCaptureSessionReady.open();
++
++        if (mCameraManager != null) {
++            try {
++                mCameraManager.unregisterAvailabilityCallback(mCameraAvailabilityCallbacks);
++            } catch (RuntimeException e) {
++                Log.w(TAG, "Unable to unregister camera availability callback", e);
++            }
++        }
++        if (mRotationProvider != null) {
++            mRotationProvider.clearListeners();
++        }
++
++        ExecutorService serviceExecutor = mServiceEventsExecutor;
++        if (serviceExecutor == null) {
++            cleanupCameraResources();
++            return;
++        }
++
++        CountDownLatch cleanupComplete = new CountDownLatch(1);
++        try {
++            serviceExecutor.execute(() -> {
++                try {
++                    cleanupCameraResources();
++                } catch (RuntimeException e) {
++                    Log.e(TAG, "Camera controller cleanup failed", e);
++                } finally {
++                    cleanupComplete.countDown();
++                }
++            });
++        } catch (RejectedExecutionException e) {
++            Log.e(TAG, "Camera cleanup executor was already stopped", e);
++            cleanupCameraResources();
++            cleanupComplete.countDown();
++        }
++
++        boolean completed = false;
++        try {
++            completed = cleanupComplete.await(
++                    CONTROLLER_SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++        }
++        if (!completed) {
++            Log.e(TAG, "Timed out while shutting down the camera controller");
++            serviceExecutor.shutdownNow();
++        } else {
++            serviceExecutor.shutdown();
++        }
++        awaitExecutorTermination(serviceExecutor, "service events");
++    }
++
++    private void cleanupCameraResources() {
++        synchronized (mSerializationLock) {
++            stopShowingCameraUnavailableLogo();
++            stopStreamingAltogetherLocked();
++            releasePreviewSurfaceLocked();
++            mPreviewRequestBuilder = null;
++            mOutputConfigurations = null;
++            mRotationUpdateListener = null;
++            mCaptureSessionReady.close();
++        }
++
++        if (mImageReaderHandler != null) {
++            mImageReaderHandler.removeCallbacksAndMessages(null);
++        }
++        if (mImageReaderThread != null) {
++            mImageReaderThread.quitSafely();
++            try {
++                mImageReaderThread.join(THREAD_SHUTDOWN_TIMEOUT_MS);
++            } catch (InterruptedException e) {
++                Thread.currentThread().interrupt();
++            }
++            if (mImageReaderThread.isAlive()) {
++                mImageReaderThread.quit();
++                try {
++                    mImageReaderThread.join(THREAD_SHUTDOWN_TIMEOUT_MS);
++                } catch (InterruptedException e) {
++                    Thread.currentThread().interrupt();
++                }
++            }
++            if (mImageReaderThread.isAlive()) {
++                Log.w(TAG, "ImageReader thread did not stop cleanly");
++            }
++        }
++
++        closeOutstandingImages();
++
++        if (mCameraCallbacksExecutor != null) {
++            mCameraCallbacksExecutor.shutdown();
++            awaitExecutorTermination(mCameraCallbacksExecutor, "camera callbacks");
++        }
++        mCameraAvailabilityState.clear();
++        mCameraManager = null;
++    }
++
++    private void closeOutstandingImages() {
++        for (Map.Entry<Long, ImageAndBuffer> entry : mImageMap.entrySet()) {
++            if (mImageMap.remove(entry.getKey(), entry.getValue())) {
++                closeImageAndBuffer(entry.getValue());
++            }
++        }
++    }
++
++    private static void closeImageAndBuffer(ImageAndBuffer imageAndBuffer) {
++        try {
++            imageAndBuffer.buffer.close();
++        } finally {
++            imageAndBuffer.image.close();
++        }
++    }
++
++    private static void awaitExecutorTermination(
++            ExecutorService executor, String executorName) {
++        try {
++            if (!executor.awaitTermination(THREAD_SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
++                Log.w(TAG, "Forcing shutdown of " + executorName + " executor");
++                executor.shutdownNow();
++            }
++        } catch (InterruptedException e) {
++            executor.shutdownNow();
++            Thread.currentThread().interrupt();
++        }
++    }
++
+     /**
+      * Returns the {@link CameraInfo} of the working camera.
+      */
+@@ -1298,7 +1702,7 @@ public class CameraController {
+      */
+     public void setZoomRatio(float zoomRatio) {
+         mZoomRatio = zoomRatio;
+-        mServiceEventsExecutor.execute(() -> {
++        executeServiceEvent(() -> {
+             synchronized (mSerializationLock) {
+                 if (mCameraDevice == null || mCaptureSession == null) {
+                     return;
+@@ -1372,7 +1776,7 @@ public class CameraController {
+                 mUserPrefs.storeFrontCameraId(mFrontCameraId.toString());
+             }
+         }
+-        mServiceEventsExecutor.execute(() -> {
++        executeServiceEvent(() -> {
+             synchronized (mSerializationLock) {
+                 if (mCameraDevice == null) {
+                     // Its possible the preview screen is up before the camera device is opened.
+@@ -1495,7 +1899,7 @@ public class CameraController {
+      * rectangles that will be applied for AF, AE and AWB.
+      */
+     public void tapToFocus(float[] normalizedPoint) {
+-        mServiceEventsExecutor.execute(() -> {
++        executeServiceEvent(() -> {
+             synchronized (mSerializationLock) {
+                 if (mCameraDevice == null || mCaptureSession == null) {
+                     return;
+@@ -1562,7 +1966,7 @@ public class CameraController {
+             mHighQualityModeEnabled = enabled;
+             mUserPrefs.storeHighQualityModeEnabled(mHighQualityModeEnabled);
+         }
+-        mServiceEventsExecutor.execute(() -> {
++        executeServiceEvent(() -> {
+             synchronized (mSerializationLock) {
+                 int currentCameraFacing = getCameraInfo().getLensFacing();
+                 mRroCameraInfo = createVendorCameraPrefs(mHighQualityModeEnabled);
+@@ -1576,8 +1980,10 @@ public class CameraController {
+                 }
+ 
+                 switchCamera(targetCameraId);
+-                // Let the caller know that the changes have been committed.
+-                callback.run();
++                if (!mShutdown.get()) {
++                    // Let the caller know that the changes have been committed.
++                    callback.run();
++                }
+             }
+         });
+     }
+@@ -1586,7 +1992,7 @@ public class CameraController {
+      * Resets to the auto-focus mode.
+      */
+     public void resetToAutoFocus() {
+-        mServiceEventsExecutor.execute(() -> {
++        executeServiceEvent(() -> {
+             synchronized (mSerializationLock) {
+                 if (mCameraDevice == null || mCaptureSession == null) {
+                     return;
+diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
+index 47f92daf67c3144b6267e80dcda29bebb540bbab..0334203287f5c41483e725c2af4549bc209b0629 100644
+--- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
++++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
+@@ -45,7 +45,6 @@ import android.util.Size;
+ import android.view.DisplayCutout;
+ import android.view.GestureDetector;
+ import android.view.Gravity;
+-import android.view.HapticFeedbackConstants;
+ import android.view.KeyEvent;
+ import android.view.MotionEvent;
+ import android.view.Surface;
+@@ -175,8 +174,6 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+                                 if (mWebcamController == null) {
+                                     return;
+                                 }
+-                                mWebcamController.setOnDestroyedCallback(() -> onWebcamDestroyed());
+-
+                                 if (mPreviewSize == null) {
+                                     return;
+                                 }
+@@ -248,6 +245,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+                     }
+                     if (service != null) {
+                         mWebcamController = service.getWebcamControllerImpl();
++                        if (mWebcamController != null) {
++                            mWebcamController.setOnDestroyedCallback(
++                                    () -> onWebcamDestroyed());
++                        }
+                     }
+                     mWebcamControllerReady.open();
+                 }
+@@ -563,9 +564,6 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+                     .setDuration(animationDuration);
+             anim.setInterpolator(new AccelerateDecelerateInterpolator());
+             anim.start();
+-            mToggleCameraButton.performHapticFeedback(
+-                    HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE);
+-
+             mZoomController.setTextDisplayRotation(finalRotation, (int) animationDuration);
+             mHighQualityToggleButton.animate()
+                     .rotation(finalRotation).setDuration(animationDuration);
+@@ -573,15 +571,14 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+     }
+ 
+     private int calculateUiRotation(int rotation) {
+-        // Rotates the UI control container according to the device sensor rotation degrees and the
+-        // camera sensor orientation.
+-
++        // Recover physical device orientation from the image rotation. Camera pixels and UI
++        // controls use different transforms, especially for the front camera.
+         int sensorOrientation = mWebcamController.getCameraInfo().getSensorOrientation();
+         if (mWebcamController.getCameraInfo().getLensFacing()
+                 == CameraCharacteristics.LENS_FACING_BACK) {
+-            rotation = (rotation + sensorOrientation) % 360;
++            rotation = (rotation - sensorOrientation + 360) % 360;
+         } else {
+-            rotation = (360 + rotation - sensorOrientation) % 360;
++            rotation = (rotation - sensorOrientation + 360) % 360;
+         }
+ 
+         // Rotation angle of the view must be [-179, 180] to ensure we always rotate the
+@@ -615,6 +612,8 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+     @Override
+     public void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
++        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
++        setTurnScreenOn(true);
+         setContentView(R.layout.preview_layout);
+         mRootView = findViewById(R.id.container_view);
+         mTextureViewContainer = findViewById(R.id.texture_view_container);
+@@ -647,7 +646,7 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+         // reverse-landscape or from portrait to reverse-portrait.
+         mRootView.setOnApplyWindowInsetsListener((view, inset) -> {
+             runOnUiThread(this::setupMainLayout);
+-            return WindowInsets.CONSUMED;
++            return inset;
+         });
+ 
+         bindService(
+@@ -683,23 +682,21 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+         return new BitmapDrawable(getResources(), bitmap);
+     }
+ 
+-    private void hideSystemUiAndActionBar() {
+-        // Hides status bar
++    private void showSystemUi() {
+         Window window = getWindow();
++        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+         window.setStatusBarColor(android.R.color.system_neutral1_800);
+-        window.setDecorFitsSystemWindows(false);
++        window.setDecorFitsSystemWindows(true);
+         WindowInsetsController controller = window.getInsetsController();
+         if (controller != null) {
+-            controller.hide(WindowInsets.Type.systemBars());
+-            controller.setSystemBarsBehavior(
+-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
++            controller.show(WindowInsets.Type.systemBars());
+         }
+     }
+ 
+     @Override
+     public void onResume() {
+         super.onResume();
+-        hideSystemUiAndActionBar();
++        showSystemUi();
+         // When the screen is turned off and turned back on, the SurfaceTexture is already
+         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
+         // a camera and start preview from here (otherwise, we wait until the surface is ready in
+diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
+index c318d54dce97d032408f34b57499fc8ea08db332..0c10dc1e1445e0f60ca3dfb4c1ed82701bea0aeb 100644
+--- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
++++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
+@@ -23,12 +23,14 @@ import android.hardware.camera2.CameraCharacteristics;
+ import android.hardware.display.DisplayManager;
+ import android.view.Display;
+ import android.view.OrientationEventListener;
++import android.view.Surface;
+ 
+ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.concurrent.Executor;
++import java.util.concurrent.RejectedExecutionException;
+ import java.util.concurrent.atomic.AtomicBoolean;
+ 
+ /**
+@@ -49,7 +51,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
+  * });
+  *
+  * // Remove when no longer needed.
+- * mRotationProvider.clearListener();
++ * mRotationProvider.clearListeners();
+  * </code></pre>
+  */
+ public final class RotationProvider {
+@@ -58,6 +60,7 @@ public final class RotationProvider {
+     private final Map<Listener, ListenerWrapper> mListeners = new HashMap<>();
+     private int mRotation;
+     private int mSensorOrientation;
++    private int mLensFacing;
+ 
+     private int mLastDisplayOrientation;
+ 
+@@ -69,14 +72,12 @@ public final class RotationProvider {
+      * @param sensorOrientation  the camera sensor orientation value
+      */
+     public RotationProvider(Context applicationContext, int sensorOrientation, int lensFacing) {
+-        mLastDisplayOrientation = applicationContext.getSystemService(DisplayManager.class)
+-                .getDisplay(Display.DEFAULT_DISPLAY).getRotation();
+-
+-        // sensor orientation is reported as the clockwise rotation needed for back camera, and
+-        // counter clockwise rotation needed for front camera. For consistent logic, always track
+-        // clockwise rotation needed in mSensorOrientation.
+-        mSensorOrientation = lensFacing == CameraCharacteristics.LENS_FACING_FRONT ?
+-                (360 - sensorOrientation) : sensorOrientation;
++        mLastDisplayOrientation = surfaceRotationToDegrees(
++                applicationContext.getSystemService(DisplayManager.class)
++                        .getDisplay(Display.DEFAULT_DISPLAY).getRotation());
++
++        mSensorOrientation = sensorOrientation;
++        mLensFacing = lensFacing;
+         mRotation = sensorOrientationToRotationDegrees(mLastDisplayOrientation);
+         mOrientationListener = new OrientationEventListener(applicationContext) {
+             @Override
+@@ -153,13 +154,21 @@ public final class RotationProvider {
+         }
+     }
+ 
++    /** Removes every listener and releases the orientation sensor. */
++    public void clearListeners() {
++        synchronized (mLock) {
++            for (ListenerWrapper listenerWrapper : mListeners.values()) {
++                listenerWrapper.disable();
++            }
++            mListeners.clear();
++            mOrientationListener.disable();
++        }
++    }
++
+     public void updateSensorOrientation(int sensorOrientation, int lensFacing) {
+         synchronized (mLock) {
+-            // sensor orientation is reported as the clockwise rotation needed for back camera, and
+-            // counter clockwise rotation needed for front camera. For consistent logic, always
+-            // track clockwise rotation needed in mSensorOrientation.
+-            mSensorOrientation = lensFacing == CameraCharacteristics.LENS_FACING_FRONT ?
+-                    (360 - sensorOrientation) : sensorOrientation;
++            mSensorOrientation = sensorOrientation;
++            mLensFacing = lensFacing;
+ 
+             // Fire callbacks with the new rotation
+             mOrientationListener.onOrientationChanged(mLastDisplayOrientation);
+@@ -170,39 +179,37 @@ public final class RotationProvider {
+      * Converts sensor orientation degrees to the image rotation degrees. Also debounces edge cases
+      * to prevent stream from flipping very quickly while the user is handling the device.
+      *
+-     * <p>Currently, the returned value can only be 0 or 180 because DeviceAsWebcam only support
+-     * in the landscape mode. The webcam stream images will be rotated to upright orientation when
+-     * the device is in the landscape orientation.
++     * <p>The returned value is one of 0, 90, 180 or 270 degrees. Values close to a quadrant
++     * boundary keep the previous rotation to avoid rapid orientation changes while the phone is
++     * being handled.
+      */
+     private int sensorOrientationToRotationDegrees(@IntRange(from = 0, to = 359) int orientation) {
+         synchronized (mLock) {
+-            // Orientation is reported as the clockwise angle from device's natural orientation.
+-            // Camera sensor orientation is reported as the clockwise angle that the buffer must be
+-            // rotated to match device's natural orientation, so the sensor orientation is reported
+-            // counter clockwise.
+-            int bufferAngle = 360 - mSensorOrientation;
+-
+-            // If the angle between the image buffer and device is greater than 90 degrees on either
+-            // side, we want to flip the stream.
+-            int dAngle = (360 + (bufferAngle - orientation)) % 360;
+-
+-            // To prevent stream from wildly flipping around while the user is handling the device,
+-            // we debounce values that are too close to the trigger points. "Too close" is being
+-            // arbitrarily defined as within 10 degrees.
+-            int ident = dAngle / 10;
+-            if (ident == 8 || ident == 9
+-                    || ident == 26 || ident == 27) {
+-                // orientation too close to 90 or 270; don't change rotation
++            int quadrantRemainder = orientation % 90;
++            if (quadrantRemainder >= 35 && quadrantRemainder <= 55) {
+                 return mRotation;
+             }
+ 
+-            // Orientation past the debounce zone. Return ideal rotation
+-            if (dAngle >= 90 && dAngle < 270) {
++            int deviceOrientation = ((orientation + 45) / 90 * 90) % 360;
++            if (mLensFacing == CameraCharacteristics.LENS_FACING_FRONT) {
++                return (mSensorOrientation - deviceOrientation + 360) % 360;
++            }
++            return (mSensorOrientation - deviceOrientation + 360) % 360;
++        }
++    }
++
++    private static int surfaceRotationToDegrees(int rotation) {
++        switch (rotation) {
++            case Surface.ROTATION_90:
++                return 90;
++            case Surface.ROTATION_180:
+                 return 180;
+-            } else {
++            case Surface.ROTATION_270:
++                return 270;
++            case Surface.ROTATION_0:
++            default:
+                 return 0;
+             }
+-        }
+     }
+ 
+     /**
+@@ -220,11 +227,18 @@ public final class RotationProvider {
+         }
+ 
+         void onRotationChanged(int rotation) {
+-            mExecutor.execute(() -> {
+-                if (mEnabled.get()) {
+-                    mListener.onRotationChanged(rotation);
+-                }
+-            });
++            if (!mEnabled.get()) {
++                return;
++            }
++            try {
++                mExecutor.execute(() -> {
++                    if (mEnabled.get()) {
++                        mListener.onRotationChanged(rotation);
++                    }
++                });
++            } catch (RejectedExecutionException ignored) {
++                // The controller is shutting down and no callback should survive it.
++            }
+         }
+ 
+         /**
+@@ -245,11 +259,8 @@ public final class RotationProvider {
+          * Called when the physical rotation of the device changes to cause the corresponding
+          * rotation value is changed.
+          *
+-         * <p>Currently, the returned value can only be 0 or 180 because DeviceAsWebcam only
+-         * support in the landscape mode. The webcam stream images will be rotated to upright
+-         * orientation when the device is in the landscape orientation.
++         * <p>The returned value is one of 0, 90, 180 or 270 degrees.
+          */
+         void onRotationChanged(int rotation);
+     }
+ }
+-
+diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
+index 9228411e16ca78bdd6d869f20ac6a6f83687e834..85e64d30b1babe0fb61c38fd790b8e783456f3af 100644
+--- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
++++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
+@@ -46,8 +46,21 @@ class WebcamControllerImpl(context: Context) : WebcamController() {
+         synchronized(mLock) { mCameraController.returnImage(token) }
+     }
+ 
++    override fun onServiceStopRequested() {
++        val destroyActivityCallback =
++            synchronized(mLock) {
++                mDestroyActivityCallback.also { mDestroyActivityCallback = null }
++            }
++        destroyActivityCallback?.run()
++    }
++
+     override fun onDestroy() {
+-        synchronized(mLock) { mDestroyActivityCallback?.run() }
++        val destroyActivityCallback =
++            synchronized(mLock) {
++                mCameraController.shutdown()
++                mDestroyActivityCallback.also { mDestroyActivityCallback = null }
++            }
++        destroyActivityCallback?.run()
+     }
+ 
+     /**
+diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
+index eb853e14ea2f899b95f3e69f33c3eae49f018069..492c92886598d14d461347aa671c613b77efd269 100644
+--- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
++++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
+@@ -31,8 +31,8 @@ public class UserPrefs {
+     private final SharedPreferences.Editor mPrefsEditor;
+ 
+     public UserPrefs(Context context) {
+-        mContext = context;
+-        mPrefs = context.getSharedPreferences(context.getString(R.string.prefs_file_name),
++        mContext = context.createDeviceProtectedStorageContext();
++        mPrefs = mContext.getSharedPreferences(mContext.getString(R.string.prefs_file_name),
+                 Context.MODE_PRIVATE);
+         mPrefsEditor = mPrefs.edit();
+     }
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp b/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
+index 3e2c1fae95038a02239f1d09bcf10036235890e5..f6b11384776b47b35c53b7e1972822c825062302 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
++++ b/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
+@@ -17,6 +17,7 @@
+ //#define LOG_NDEBUG 0
+ 
+ #include "Buffer.h"
++#include <chrono>
+ #include <inttypes.h>
+ #include <log/log.h>
+ 
+@@ -101,15 +102,19 @@ bool BufferManager::filledProducerBufferAvailableLocked(uint32_t* index) {
+ }
+ 
+ Buffer* BufferManager::getFilledBufferAndSwap() {
++    using namespace std::chrono_literals;
++
+     // Consumer call
+     // Wait for a producer buffer item state to be FILLED
+     // and swap consumer and producer buffer
+     std::unique_lock<std::mutex> l(mBufferLock);
+     uint32_t index = 0;
+     while (!filledProducerBufferAvailableLocked(&index)) {
+-        // TODO(b/267794640): Add a timeout to recover in case of a deadlock.
+-        // Wait till the producer side has filled the buffer.
+-        mProducerBufferFilled.wait(l);
++        if (mProducerBufferFilled.wait_for(l, 5s) == std::cv_status::timeout &&
++            !filledProducerBufferAvailableLocked(&index)) {
++            ALOGE("%s: Timed out waiting for an encoded camera frame", __FUNCTION__);
++            return nullptr;
++        }
+     }
+     // Mark it free so that the producer can start filling it.
+     mConsumerBufferItem.state = BufferState::FREE;
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
+index 2ef969dae054103413e8bf9d6e681a0ef82468d2..94022af73e9cfabdad15b90555ffa155afaca1de 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
++++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
+@@ -20,6 +20,7 @@
+ #include <android/hardware_buffer_jni.h>
+ #include <log/log.h>
+ #include <unordered_set>
++#include <utility>
+ 
+ namespace android {
+ namespace webcam {
+@@ -34,19 +35,19 @@ std::unordered_set<std::string> stringSetFromJavaArray(jobjectArray javaArr) {
+     std::unordered_set<std::string> ret = {};
+     jsize len = env->GetArrayLength(javaArr);
+     for (jsize i = 0; i < len; i++) {
+-        jstring jStr = (jstring) env->GetObjectArrayElement(javaArr, i);
++        jstring jStr = (jstring)env->GetObjectArrayElement(javaArr, i);
+ 
+         const jsize strLen = env->GetStringUTFLength(jStr);
+         const char* buf = env->GetStringUTFChars(jStr, NULL);
+ 
+-        ret.emplace(buf, strLen); // std::string makes a copy of the buffer
++        ret.emplace(buf, strLen);  // std::string makes a copy of the buffer
+ 
+         env->ReleaseStringUTFChars(jStr, buf);
+         env->DeleteLocalRef(jStr);
+     }
+     return ret;
+ }
+-} // anonymous namespace
++}  // anonymous namespace
+ 
+ DeviceAsWebcamServiceManager* DeviceAsWebcamServiceManager::kInstance =
+         new DeviceAsWebcamServiceManager();
+@@ -54,8 +55,8 @@ DeviceAsWebcamServiceManager* DeviceAsWebcamServiceManager::kInstance =
+ bool DeviceAsWebcamServiceManager::shouldStartService(jobjectArray jIgnoredNodes) {
+     ALOGV("%s", __FUNCTION__);
+     std::lock_guard<std::mutex> l(mSerializationLock);
+-    if (mServiceRunning) {
+-        ALOGW("Service already running, don't start it again.");
++    if (mServiceRunning || mServiceStopping) {
++        ALOGW("Service is already running or stopping; don't start it again.");
+         return false;
+     }
+ 
+@@ -67,27 +68,31 @@ int DeviceAsWebcamServiceManager::setupServicesAndStartListening(JNIEnv* env, jo
+                                                                  jobjectArray jIgnoredNodes) {
+     ALOGV("%s", __FUNCTION__);
+     std::lock_guard<std::mutex> l(mSerializationLock);
++    if (mServiceRunning || mServiceStopping) {
++        ALOGW("%s: Service is already running or stopping", __FUNCTION__);
++        return -1;
++    }
+     if (mUVCProvider == nullptr) {
+         mUVCProvider = std::make_shared<UVCProvider>();
+     }
+ 
+     std::unordered_set<std::string> ignoredNodes = stringSetFromJavaArray(jIgnoredNodes);
+     // Set up UVC stack
+-    if ((mUVCProvider->init() != Status::OK) ||
+-        (mUVCProvider->startService(ignoredNodes) != Status::OK)) {
++    if (mUVCProvider->startService(ignoredNodes) != Status::OK) {
+         ALOGE("%s: Unable to init/ start service", __FUNCTION__);
+         return -1;
+     }
+     mJavaService = env->NewGlobalRef(javaService);
+     mServiceRunning = true;
++    mStopRequested = false;
+     return 0;
+ }
+ 
+-int DeviceAsWebcamServiceManager::encodeImage(JNIEnv* env, jobject hardwareBuffer,
+-                                              jlong timestamp, jint rotation) {
++int DeviceAsWebcamServiceManager::encodeImage(JNIEnv* env, jobject hardwareBuffer, jlong timestamp,
++                                              jint rotation) {
+     ALOGV("%s", __FUNCTION__);
+     std::lock_guard<std::mutex> l(mSerializationLock);
+-    if (!mServiceRunning) {
++    if (!mServiceRunning || mServiceStopping) {
+         ALOGE("%s called, but native service is not running. Ignoring call.", __FUNCTION__);
+         return -1;
+     }
+@@ -99,7 +104,7 @@ void DeviceAsWebcamServiceManager::setStreamConfig(bool mjpeg, uint32_t width, u
+                                                    uint32_t fps) {
+     ALOGV("%s", __FUNCTION__);
+     std::lock_guard<std::mutex> l(mSerializationLock);
+-    if (!mServiceRunning) {
++    if (!mServiceRunning || mServiceStopping) {
+         ALOGE("%s called but java foreground service is not running. No-op-ing out", __FUNCTION__);
+         return;
+     }
+@@ -109,7 +114,7 @@ void DeviceAsWebcamServiceManager::setStreamConfig(bool mjpeg, uint32_t width, u
+ void DeviceAsWebcamServiceManager::startStreaming() {
+     ALOGV("%s", __FUNCTION__);
+     std::lock_guard<std::mutex> l(mSerializationLock);
+-    if (!mServiceRunning) {
++    if (!mServiceRunning || mServiceStopping) {
+         ALOGE("%s called but java foreground service is not running. No-op-ing out", __FUNCTION__);
+         return;
+     }
+@@ -119,7 +124,7 @@ void DeviceAsWebcamServiceManager::startStreaming() {
+ void DeviceAsWebcamServiceManager::stopStreaming() {
+     ALOGV("%s", __FUNCTION__);
+     std::lock_guard<std::mutex> l(mSerializationLock);
+-    if (!mServiceRunning) {
++    if (!mServiceRunning || mServiceStopping) {
+         ALOGE("%s called but java foreground service is not running. No-op-ing out", __FUNCTION__);
+         return;
+     }
+@@ -138,41 +143,73 @@ void DeviceAsWebcamServiceManager::returnImage(long timestamp) {
+ 
+ void DeviceAsWebcamServiceManager::stopService() {
+     ALOGV("%s", __FUNCTION__);
+-    std::lock_guard<std::mutex> l(mSerializationLock);
+-    if (!mServiceRunning) {
+-        ALOGE("%s called but java foreground service is not running. No-op-ing out", __FUNCTION__);
+-        return;
+-    }
+-    // Wait for previous stopService java call to finish (note that this should almost
+-    // never actually block unless something goes really wrong).
+-    if (mJniThread.joinable()) {
+-        mJniThread.join();
++    JNIEnv* env = DeviceAsWebcamNative::getJNIEnvOrAbort();
++    jobject javaService = nullptr;
++    {
++        std::lock_guard<std::mutex> l(mSerializationLock);
++        if (!mServiceRunning || mServiceStopping) {
++            ALOGE("%s called but java foreground service is not running. No-op-ing out",
++                  __FUNCTION__);
++            return;
++        }
++        if (mStopRequested) {
++            ALOGV("%s: A service stop is already pending", __FUNCTION__);
++            return;
++        }
++        mStopRequested = true;
++        javaService = env->NewLocalRef(mJavaService);
+     }
+ 
+-    // Send off the event on a background thread. This prevents the caller thread being stuck on
+-    // Java logic.
+-    mJniThread = DeviceAsWebcamNative::createJniAttachedThread(&DeviceAsWebcamNative::stopService,
+-                                                               mJavaService);
+-    // Don't reset any state as the Java service's onDestroy callback will handle that for us.
++    if (javaService == nullptr) {
++        ALOGE("%s: Unable to retain the Java service", __FUNCTION__);
++        std::lock_guard<std::mutex> l(mSerializationLock);
++        mStopRequested = false;
++        return;
++    }
++    // This listener thread is JNI-attached. Calling Java without the native lock avoids a
++    // Java/native lock inversion during Service.onDestroy().
++    DeviceAsWebcamNative::stopService(javaService);
++    env->DeleteLocalRef(javaService);
+ }
+ 
+ // Called by the Java Foreground service when it is being destroyed. The UVCProvider may or may not
+ // be running at this point.
+ void DeviceAsWebcamServiceManager::onDestroy() {
+     ALOGV("%s", __FUNCTION__);
+-    std::lock_guard<std::mutex> l(mSerializationLock);
+-    if (!mServiceRunning) {
+-        ALOGE("%s called after Java Service was already considered destroyed. No-op-ing out.",
+-              __FUNCTION__);
+-        return;
++    std::shared_ptr<UVCProvider> provider;
++    jobject javaService = nullptr;
++    {
++        std::lock_guard<std::mutex> l(mSerializationLock);
++        if (!mServiceRunning) {
++            ALOGE("%s called after Java Service was already considered destroyed. No-op-ing out.",
++                  __FUNCTION__);
++            return;
++        }
++
++        /*
++         * Keep the Java reference alive while the encoder returns outstanding
++         * HardwareBuffers, but block every callback except returnImage().
++         * Provider destruction happens outside this lock.
++         */
++        mServiceStopping = true;
++        provider = std::move(mUVCProvider);
++        javaService = mJavaService;
+     }
+ 
+-    JNIEnv* env = DeviceAsWebcamNative::getJNIEnvOrAbort();
+-    // reset all non-static state
+-    mUVCProvider = nullptr;
+-    env->DeleteGlobalRef(mJavaService);  // let Java Service be GC'ed by the JVM
+-    mJavaService = nullptr;
+-    mServiceRunning = false;
++    provider.reset();
++
++    {
++        std::lock_guard<std::mutex> l(mSerializationLock);
++        mServiceRunning = false;
++        mJavaService = nullptr;
++        mStopRequested = false;
++        mServiceStopping = false;
++    }
++
++    if (javaService != nullptr) {
++        JNIEnv* env = DeviceAsWebcamNative::getJNIEnvOrAbort();
++        env->DeleteGlobalRef(javaService);
++    }
+ }
+ 
+ }  // namespace webcam
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
+index 38d7bfa7a57fd15f0f06cf82ee6290136f6ec9f5..a1f379c1364c6b66332f691edb5a7a0121e1c617 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
++++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
+@@ -20,7 +20,6 @@
+ #pragma once
+ #include <jni.h>
+ #include <mutex>
+-#include <thread>
+ 
+ namespace android {
+ namespace webcam {
+@@ -60,12 +59,13 @@ class DeviceAsWebcamServiceManager {
+   private:
+     DeviceAsWebcamServiceManager() = default;
+ 
+-    std::mutex mSerializationLock;   // Serializes all methods in class
+-    bool mServiceRunning = false;    // if this is true, then the variables underneath can be
+-                                     // considered safe to use without further checking.
++    std::mutex mSerializationLock;  // Serializes all methods in class
++    bool mServiceRunning = false;   // if this is true, then the variables underneath can be
++                                    // considered safe to use without further checking.
++    bool mServiceStopping = false;
++    bool mStopRequested = false;
+     jobject mJavaService = nullptr;  // strong reference to the current foreground service.
+     std::shared_ptr<UVCProvider> mUVCProvider;
+-    std::thread mJniThread;  // thread to make asynchronous calls to Java
+ };
+ 
+ }  // namespace webcam
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp b/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
+index a3cddaecef295cec1ff3a28d528ad777830970c7..cadec80e8fcc1895a716cf6b7d92ec88c3379dea 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
++++ b/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
+@@ -20,16 +20,36 @@
+ 
+ #include <DeviceAsWebcamNative.h>
+ #include <condition_variable>
++#include <jerror.h>
+ #include <libyuv/convert.h>
+ #include <libyuv/convert_from.h>
+ #include <libyuv/rotate.h>
++#include <libyuv/scale.h>
+ #include <log/log.h>
+ #include <queue>
+ #include <sched.h>
++#include <setjmp.h>
+ 
+ namespace android {
+ namespace webcam {
+ 
++namespace {
++
++struct JpegErrorManager {
++    jpeg_error_mgr base;
++    jmp_buf jumpBuffer;
++};
++
++void jpegErrorExit(j_common_ptr cInfo) {
++    auto* errorManager = reinterpret_cast<JpegErrorManager*>(cInfo->err);
++    char message[JMSG_LENGTH_MAX];
++    cInfo->err->format_message(cInfo, message);
++    ALOGE("JPEG compression failed: %s", message);
++    longjmp(errorManager->jumpBuffer, 1);
++}
++
++}  // namespace
++
+ Encoder::Encoder(CameraConfig& config, EncoderCallback* cb)
+     : mConfig(config), mCb(cb){
+     // Inititalize intermediate buffers here.
+@@ -44,7 +64,12 @@ Encoder::Encoder(CameraConfig& config, EncoderCallback* cb)
+     mI420.uRowStride = config.width / 2;
+     mI420.vRowStride = config.width / 2;
+ 
+-    if (mI420.y == nullptr || mI420.u == nullptr || mI420.v == nullptr) {
++    mScratchI420.y = std::make_unique<uint8_t[]>(config.width * config.height);
++    mScratchI420.u = std::make_unique<uint8_t[]>(config.width * config.height / 2);
++    mScratchI420.v = std::make_unique<uint8_t[]>(config.width * config.height / 2);
++
++    if (mI420.y == nullptr || mI420.u == nullptr || mI420.v == nullptr ||
++        mScratchI420.y == nullptr || mScratchI420.u == nullptr || mScratchI420.v == nullptr) {
+         ALOGE("%s Failed to allocate memory for intermediate I420 buffers", __FUNCTION__);
+         return;
+     }
+@@ -58,6 +83,7 @@ bool Encoder::isInited() const {
+ 
+ Encoder::~Encoder() {
+     mContinueEncoding = false;
++    mRequestCondition.notify_all();
+     if (mEncoderThread.joinable()) {
+         mEncoderThread.join();
+     }
+@@ -99,21 +125,8 @@ void Encoder::queueRequest(EncodeRequest& request) {
+     mRequestCondition.notify_one();
+ }
+ 
+-bool Encoder::checkError(const char* msg, j_common_ptr jpeg_error_info_) {
+-    if (jpeg_error_info_) {
+-        char err_buffer[JMSG_LENGTH_MAX];
+-        jpeg_error_info_->err->format_message(jpeg_error_info_, err_buffer);
+-        ALOGE("%s: %s: %s", __FUNCTION__, msg, err_buffer);
+-        jpeg_error_info_ = nullptr;
+-        return true;
+-    }
+-
+-    return false;
+-}
+-
+ uint32_t Encoder::i420ToJpeg(EncodeRequest& request) {
+     ALOGV("%s: E cpu : %d", __FUNCTION__, sched_getcpu());
+-    j_common_ptr jpegErrorInfo;
+     auto dstBuffer = request.dstBuffer;
+     struct CustomJpegDestMgr : public jpeg_destination_mgr {
+         JOCTET* buffer;
+@@ -122,107 +135,88 @@ uint32_t Encoder::i420ToJpeg(EncodeRequest& request) {
+         bool success;
+     } dmgr;
+ 
+-    // Set up error management
+-    jpegErrorInfo = nullptr;
+-    jpeg_error_mgr jErr;
+-    auto jpegCompressDeleter =
+-          [] (jpeg_compress_struct *c) {
+-              jpeg_destroy_compress(c);
+-              delete c;
+-          };
+-
+-    std::unique_ptr<jpeg_compress_struct, decltype(jpegCompressDeleter)> cInfo(
+-            new jpeg_compress_struct(), jpegCompressDeleter);
+-
+-    cInfo->err = jpeg_std_error(&jErr);
+-    cInfo->err->error_exit = [](j_common_ptr cInfo) {
+-        (*cInfo->err->output_message)(cInfo);
+-        if (cInfo->client_data) {
+-            auto& dmgr = *static_cast<CustomJpegDestMgr*>(cInfo->client_data);
+-            dmgr.success = false;
++    const size_t mcuHeight = DCTSIZE * 2;
++    const size_t paddedHeight =
++            mcuHeight * ((mConfig.height + mcuHeight - 1) / mcuHeight);
++    std::vector<JSAMPROW> yLines(paddedHeight);
++    std::vector<JSAMPROW> cbLines(paddedHeight / 2);
++    std::vector<JSAMPROW> crLines(paddedHeight / 2);
++
++    jpeg_compress_struct cInfo {};
++    JpegErrorManager jErr {};
++    volatile bool compressorCreated = false;
++
++    cInfo.err = jpeg_std_error(&jErr.base);
++    jErr.base.error_exit = jpegErrorExit;
++    if (setjmp(jErr.jumpBuffer)) {
++        if (compressorCreated) {
++            jpeg_destroy_compress(&cInfo);
+         }
+-    };
+-
+-    jpeg_create_compress(cInfo.get());
+-    if (checkError("Error initializing compression", jpegErrorInfo)) {
+         return 0;
+     }
++    jpeg_create_compress(&cInfo);
++    compressorCreated = true;
+ 
+     dmgr.buffer = static_cast<JOCTET*>(dstBuffer->getMem());
+     dmgr.bufferSize = dstBuffer->getLength();
+     dmgr.encodedSize = 0;
+     dmgr.success = true;
+-    cInfo->client_data = static_cast<void*>(&dmgr);
+-    dmgr.init_destination = [](j_compress_ptr cInfo) {
+-        auto& dmgr = static_cast<CustomJpegDestMgr&>(*cInfo->dest);
++    cInfo.client_data = static_cast<void*>(&dmgr);
++    dmgr.init_destination = [](j_compress_ptr compressor) {
++        auto& dmgr = static_cast<CustomJpegDestMgr&>(*compressor->dest);
+         dmgr.next_output_byte = dmgr.buffer;
+         dmgr.free_in_buffer = dmgr.bufferSize;
+     };
+ 
+-    dmgr.empty_output_buffer = [](j_compress_ptr) {
+-        ALOGE("%s:%d Out of buffer", __FUNCTION__, __LINE__);
+-        return 0;
++    dmgr.empty_output_buffer = [](j_compress_ptr compressor) {
++        auto& dmgr = static_cast<CustomJpegDestMgr&>(*compressor->dest);
++        dmgr.success = false;
++        ERREXIT(compressor, JERR_BUFFER_SIZE);
++        return FALSE;
+     };
+ 
+-    dmgr.term_destination = [](j_compress_ptr cInfo) {
+-        auto& dmgr = static_cast<CustomJpegDestMgr&>(*cInfo->dest);
++    dmgr.term_destination = [](j_compress_ptr compressor) {
++        auto& dmgr = static_cast<CustomJpegDestMgr&>(*compressor->dest);
+         dmgr.encodedSize = dmgr.bufferSize - dmgr.free_in_buffer;
+         ALOGV("%s:%d Done with jpeg: %zu", __FUNCTION__, __LINE__, dmgr.encodedSize);
+     };
+ 
+-    cInfo->dest = &dmgr;
++    cInfo.dest = &dmgr;
+ 
+     // Set up compression parameters
+-    cInfo->image_width = mConfig.width;
+-    cInfo->image_height = mConfig.height;
+-    cInfo->input_components = 3;
+-    cInfo->in_color_space = JCS_YCbCr;
+-
+-    jpeg_set_defaults(cInfo.get());
+-    if (checkError("Error configuring defaults", jpegErrorInfo)) {
+-        return 0;
+-    }
+-
+-    jpeg_set_colorspace(cInfo.get(), JCS_YCbCr);
+-    if (checkError("Error configuring color space", jpegErrorInfo)) {
+-        return 0;
+-    }
++    cInfo.image_width = mConfig.width;
++    cInfo.image_height = mConfig.height;
++    cInfo.input_components = 3;
++    cInfo.in_color_space = JCS_YCbCr;
+ 
+-    cInfo->raw_data_in = 1;
++    jpeg_set_defaults(&cInfo);
++    jpeg_set_colorspace(&cInfo, JCS_YCbCr);
++    cInfo.raw_data_in = 1;
+ 
+     // YUV420 planar with chroma subsampling
+     // Configure sampling factors. The sampling factor is JPEG subsampling 420
+     // because the source format is YUV420. Note that libjpeg sampling factors
+     // have a somewhat interesting meaning: Sampling of Y=2,U=1,V=1 means there is 1 U and
+     // 1 V value for each 2 Y values */
+-    cInfo->comp_info[0].h_samp_factor = 2; // Y horizontal sampling
+-    cInfo->comp_info[0].v_samp_factor = 2; // Y vertical sampling
+-    cInfo->comp_info[1].h_samp_factor = 1; // U horizontal sampling
+-    cInfo->comp_info[1].v_samp_factor = 1; // U vertical sampling
+-    cInfo->comp_info[2].h_samp_factor = 1; // V horizontal sampling
+-    cInfo->comp_info[2].v_samp_factor = 1; // V vertical sampling
++    cInfo.comp_info[0].h_samp_factor = 2; // Y horizontal sampling
++    cInfo.comp_info[0].v_samp_factor = 2; // Y vertical sampling
++    cInfo.comp_info[1].h_samp_factor = 1; // U horizontal sampling
++    cInfo.comp_info[1].v_samp_factor = 1; // U vertical sampling
++    cInfo.comp_info[2].h_samp_factor = 1; // V horizontal sampling
++    cInfo.comp_info[2].v_samp_factor = 1; // V vertical sampling
+ 
+     // This vertical subsampling is the same for both Cb and Cr components as defined in
+-    // cInfo->comp_info.
+-    int cvSubSampling = cInfo->comp_info[0].v_samp_factor / cInfo->comp_info[1].v_samp_factor;
++    // cInfo.comp_info.
++    int cvSubSampling = cInfo.comp_info[0].v_samp_factor / cInfo.comp_info[1].v_samp_factor;
+ 
+     // Start compression
+-    jpeg_start_compress(cInfo.get(), TRUE);
+-    if (checkError("Error starting compression", jpegErrorInfo)) {
+-        return 0;
+-    }
++    jpeg_start_compress(&cInfo, TRUE);
+ 
+     // Compute our macroblock height, so we can pad our input to be vertically
+     // macroblock aligned.
+     int maxVSampFactor =
+-            std::max({cInfo->comp_info[0].v_samp_factor, cInfo->comp_info[1].v_samp_factor,
+-                      cInfo->comp_info[2].v_samp_factor});
+-    size_t mcuV = DCTSIZE * maxVSampFactor;
+-    size_t paddedHeight = mcuV * ((cInfo->image_height + mcuV - 1) / mcuV);
+-
+-    std::vector<JSAMPROW> yLines(paddedHeight);
+-    std::vector<JSAMPROW> cbLines(paddedHeight / cvSubSampling);
+-    std::vector<JSAMPROW> crLines(paddedHeight / cvSubSampling);
++            std::max({cInfo.comp_info[0].v_samp_factor, cInfo.comp_info[1].v_samp_factor,
++                      cInfo.comp_info[2].v_samp_factor});
+ 
+     uint8_t* pY = mI420.y.get();
+     uint8_t* pCr = mI420.v.get();
+@@ -234,29 +228,33 @@ uint32_t Encoder::i420ToJpeg(EncodeRequest& request) {
+     for (uint32_t i = 0; i < paddedHeight; i++) {
+         // Once we are in the padding territory we still point to the last line
+         // effectively replicating it several times ~ CLAMP_TO_EDGE
+-        uint32_t li = std::min(i, cInfo->image_height - 1);
++        uint32_t li = std::min(i, cInfo.image_height - 1);
+         yLines[i] = static_cast<JSAMPROW>(pY + li * yStride);
+         if (i < paddedHeight / cvSubSampling) {
+-            li = std::min(i, (cInfo->image_height - 1) / cvSubSampling);
++            li = std::min(i, (cInfo.image_height - 1) / cvSubSampling);
+             crLines[i] = static_cast<JSAMPROW>(pCr + li * cbCrStride);
+             cbLines[i] = static_cast<JSAMPROW>(pCb + li * cbCrStride);
+         }
+     }
+ 
+     const uint32_t batchSize = DCTSIZE * maxVSampFactor;
+-    while (cInfo->next_scanline < cInfo->image_height) {
+-        JSAMPARRAY planes[3]{&yLines[cInfo->next_scanline],
+-                             &cbLines[cInfo->next_scanline / cvSubSampling],
+-                             &crLines[cInfo->next_scanline / cvSubSampling]};
+-
+-        jpeg_write_raw_data(cInfo.get(), planes, batchSize);
+-        if (checkError("Error while compressing", jpegErrorInfo)) {
+-            return 0;
+-        }
++    while (cInfo.next_scanline < cInfo.image_height) {
++        JSAMPARRAY planes[3]{&yLines[cInfo.next_scanline],
++                             &cbLines[cInfo.next_scanline / cvSubSampling],
++                             &crLines[cInfo.next_scanline / cvSubSampling]};
++
++        jpeg_write_raw_data(&cInfo, planes, batchSize);
+     }
+ 
+-    jpeg_finish_compress(cInfo.get());
+-    if (checkError("Error while finishing compression", jpegErrorInfo)) {
++    jpeg_finish_compress(&cInfo);
++    jpeg_destroy_compress(&cInfo);
++    compressorCreated = false;
++
++    if (!dmgr.success || dmgr.encodedSize < 4 || dmgr.encodedSize > dmgr.bufferSize ||
++        dmgr.buffer[0] != 0xff || dmgr.buffer[1] != 0xd8 ||
++        dmgr.buffer[dmgr.encodedSize - 2] != 0xff ||
++        dmgr.buffer[dmgr.encodedSize - 1] != 0xd9) {
++        ALOGE("%s: Encoder produced an invalid JPEG (%zu bytes)", __FUNCTION__, dmgr.encodedSize);
+         return 0;
+     }
+ 
+@@ -287,25 +285,123 @@ void Encoder::encodeToMJpeg(EncodeRequest& request) {
+ 
+ int Encoder::convertToI420(EncodeRequest& request) {
+     HardwareBufferDesc& src = request.srcBuffer;
+-    uint8_t* dstY = mI420.y.get();
+-    uint8_t* dstU = mI420.u.get();
+-    uint8_t* dstV = mI420.v.get();
+-    int32_t dstYRowStride = mConfig.width;
+-    int32_t dstURowStride = mConfig.width / 2;
+-    int32_t dstVRowStride = mConfig.width / 2;
+-    libyuv::RotationMode rotationMode = request.rotationDegrees == 180 ?
+-        libyuv::kRotate180 : libyuv::kRotate0;
+-    if (request.srcBuffer.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM) {
++    if (src.width == 0 || src.height == 0 ||
++        static_cast<uint64_t>(src.width) * src.height >
++                static_cast<uint64_t>(mConfig.width) * mConfig.height) {
++        ALOGE("%s: Invalid source dimensions %ux%u for output %ux%u", __FUNCTION__, src.width,
++              src.height, mConfig.width, mConfig.height);
++        return -1;
++    }
++
++    libyuv::RotationMode rotationMode;
++    switch (request.rotationDegrees % 360) {
++        case 0:
++            rotationMode = libyuv::kRotate0;
++            break;
++        case 90:
++            rotationMode = libyuv::kRotate90;
++            break;
++        case 180:
++            rotationMode = libyuv::kRotate180;
++            break;
++        case 270:
++            rotationMode = libyuv::kRotate270;
++            break;
++        default:
++            ALOGE("%s: Unsupported rotation %u", __FUNCTION__, request.rotationDegrees);
++            return -1;
++    }
++
++    const bool swapsDimensions = rotationMode == libyuv::kRotate90 ||
++            rotationMode == libyuv::kRotate270;
++    const uint32_t rotatedWidth = swapsDimensions ? src.height : src.width;
++    const uint32_t rotatedHeight = swapsDimensions ? src.width : src.height;
++    const bool fitsOutput = rotatedWidth == mConfig.width && rotatedHeight == mConfig.height;
++    I420& converted = fitsOutput ? mI420 : mScratchI420;
++    converted.yRowStride = rotatedWidth;
++    converted.uRowStride = rotatedWidth / 2;
++    converted.vRowStride = rotatedWidth / 2;
++
++    int result;
++    if (src.format == AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420 &&
++        std::holds_alternative<YuvHardwareBufferDesc>(src.bufferDesc)) {
++        YuvHardwareBufferDesc desc = std::get<YuvHardwareBufferDesc>(src.bufferDesc);
++        if (!mLoggedInputLayout.exchange(true)) {
++            ALOGI("%s: input=%ux%u output=%ux%u rotation=%u strides=%u/%u/%u pixelStride=%u",
++                  __FUNCTION__, src.width, src.height, mConfig.width, mConfig.height,
++                  request.rotationDegrees, desc.yRowStride, desc.uRowStride, desc.vRowStride,
++                  desc.uvPixelStride);
++        }
++        result = libyuv::Android420ToI420Rotate(
++                desc.yData, desc.yRowStride, desc.uData, desc.uRowStride, desc.vData,
++                desc.vRowStride, desc.uvPixelStride, converted.y.get(), converted.yRowStride,
++                converted.u.get(), converted.uRowStride, converted.v.get(),
++                converted.vRowStride, src.width, src.height, rotationMode);
++    } else if (src.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM &&
++               std::holds_alternative<ARGBHardwareBufferDesc>(src.bufferDesc)) {
+         ARGBHardwareBufferDesc desc = std::get<ARGBHardwareBufferDesc>(src.bufferDesc);
+-        return libyuv::ARGBToI420(desc.buf, desc.rowStride, dstY,
+-                                  dstYRowStride, dstU, dstURowStride, dstV,
+-                                  dstVRowStride, mConfig.width, mConfig.height);
++        if (rotationMode == libyuv::kRotate0) {
++            result = libyuv::ARGBToI420(
++                    desc.buf, desc.rowStride, converted.y.get(), converted.yRowStride,
++                    converted.u.get(), converted.uRowStride, converted.v.get(),
++                    converted.vRowStride, src.width, src.height);
++        } else {
++            I420& unrotated = fitsOutput ? mScratchI420 : mI420;
++            unrotated.yRowStride = src.width;
++            unrotated.uRowStride = src.width / 2;
++            unrotated.vRowStride = src.width / 2;
++            result = libyuv::ARGBToI420(
++                    desc.buf, desc.rowStride, unrotated.y.get(), unrotated.yRowStride,
++                    unrotated.u.get(), unrotated.uRowStride, unrotated.v.get(),
++                    unrotated.vRowStride, src.width, src.height);
++            if (result == 0) {
++                result = libyuv::I420Rotate(
++                        unrotated.y.get(), unrotated.yRowStride, unrotated.u.get(),
++                        unrotated.uRowStride, unrotated.v.get(), unrotated.vRowStride,
++                        converted.y.get(), converted.yRowStride, converted.u.get(),
++                        converted.uRowStride, converted.v.get(), converted.vRowStride,
++                        src.width, src.height, rotationMode);
++            }
++        }
++    } else {
++        ALOGE("%s: Unsupported hardware buffer format %u", __FUNCTION__, src.format);
++        return -1;
++    }
++
++    if (result != 0 || fitsOutput) {
++        return result;
++    }
++
++    mI420.yRowStride = mConfig.width;
++    mI420.uRowStride = mConfig.width / 2;
++    mI420.vRowStride = mConfig.width / 2;
++    memset(mI420.y.get(), 16, mConfig.width * mConfig.height);
++    memset(mI420.u.get(), 128, mConfig.width * mConfig.height / 4);
++    memset(mI420.v.get(), 128, mConfig.width * mConfig.height / 4);
++
++    uint32_t scaledWidth;
++    uint32_t scaledHeight;
++    if (static_cast<uint64_t>(rotatedWidth) * mConfig.height >
++        static_cast<uint64_t>(mConfig.width) * rotatedHeight) {
++        scaledWidth = mConfig.width;
++        scaledHeight = static_cast<uint64_t>(rotatedHeight) * mConfig.width / rotatedWidth;
++    } else {
++        scaledHeight = mConfig.height;
++        scaledWidth = static_cast<uint64_t>(rotatedWidth) * mConfig.height / rotatedHeight;
+     }
+-    YuvHardwareBufferDesc desc = std::get<YuvHardwareBufferDesc>(src.bufferDesc);
+-    return libyuv::Android420ToI420Rotate(desc.yData, desc.yRowStride, desc.uData, desc.uRowStride,
+-                                    desc.vData, desc.vRowStride, desc.uvPixelStride, dstY,
+-                                    dstYRowStride, dstU, dstURowStride, dstV, dstVRowStride,
+-                                    mConfig.width, mConfig.height, rotationMode);
++    scaledWidth = std::max(2u, scaledWidth & ~1u);
++    scaledHeight = std::max(2u, scaledHeight & ~1u);
++    const uint32_t offsetX = ((mConfig.width - scaledWidth) / 2) & ~1u;
++    const uint32_t offsetY = ((mConfig.height - scaledHeight) / 2) & ~1u;
++
++    return libyuv::I420Scale(
++            converted.y.get(), converted.yRowStride, converted.u.get(), converted.uRowStride,
++            converted.v.get(), converted.vRowStride, rotatedWidth, rotatedHeight,
++            mI420.y.get() + offsetY * mI420.yRowStride + offsetX, mI420.yRowStride,
++            mI420.u.get() + (offsetY / 2) * mI420.uRowStride + offsetX / 2,
++            mI420.uRowStride,
++            mI420.v.get() + (offsetY / 2) * mI420.vRowStride + offsetX / 2,
++            mI420.vRowStride, scaledWidth, scaledHeight, libyuv::kFilterBilinear);
+ }
+ 
+ void Encoder::encodeToYUYV(EncodeRequest& r) {
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/Encoder.h b/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
+index fe0d868ff82cc109be70be2a3e8b84a9695ff914..e6332184c77c61cd94e0677dbcf657b493c8295c 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
++++ b/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
+@@ -82,8 +82,6 @@ class Encoder {
+     void encodeToMJpeg(EncodeRequest& request);
+     void encodeToYUYV(EncodeRequest& request);
+ 
+-    static bool checkError(const char* msg, j_common_ptr jpeg_error_info_);
+-
+     std::mutex mRequestLock;
+     std::queue<EncodeRequest> mRequestQueue;    // guarded by mRequestLock
+     std::condition_variable mRequestCondition;  // guarded by mRequestLock
+@@ -91,9 +89,11 @@ class Encoder {
+     std::thread mEncoderThread;
+     CameraConfig mConfig;
+     EncoderCallback* mCb = nullptr;
+-    volatile bool mContinueEncoding = true;
++    std::atomic<bool> mContinueEncoding = true;
+     bool mInited = false;
+     I420 mI420;
++    I420 mScratchI420;
++    std::atomic<bool> mLoggedInputLayout = false;
+ };
+ 
+ }  // namespace webcam
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
+index ab8fa5f2504d75c700d3a3245d69fe2614deec52..fc81b98eba2baa254bde5265e6335ab5e887a73f 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
++++ b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
+@@ -46,11 +46,17 @@ void SdkFrameProvider::setStreamConfig() {
+ }
+ 
+ Status SdkFrameProvider::startStreaming() {
++    if (mStreaming.exchange(true)) {
++        return Status::OK;
++    }
+     DeviceAsWebcamServiceManager::kInstance->startStreaming();
+     return Status::OK;
+ }
+ 
+ Status SdkFrameProvider::stopStreaming() {
++    if (!mStreaming.exchange(false)) {
++        return Status::OK;
++    }
+     DeviceAsWebcamServiceManager::kInstance->stopStreaming();
+     return Status::OK;
+ }
+@@ -93,28 +99,28 @@ Status SdkFrameProvider::getHardwareBufferDescFromHardwareBuffer(AHardwareBuffer
+     ret.height = height;
+ 
+     if (ret.format == AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420) {
+-      YuvHardwareBufferDesc yuvDesc;
+-      yuvDesc.yData = (uint8_t*) planes.planes[0].data;
+-      yuvDesc.yDataLength = planes.planes[0].rowStride * (height - 1) + width;
+-      yuvDesc.yRowStride = planes.planes[0].rowStride;
+-
+-      yuvDesc.uData = (uint8_t*) planes.planes[1].data;
+-      yuvDesc.uDataLength = planes.planes[1].rowStride * (height / 2 - 1) +
+-          (planes.planes[1].pixelStride * width / 2 - 1) + 1;
+-      yuvDesc.uRowStride = planes.planes[1].rowStride;
+-
+-      yuvDesc.vData = (uint8_t*) planes.planes[2].data;
+-      yuvDesc.vDataLength = planes.planes[2].rowStride * (height / 2 - 1) +
+-          (planes.planes[2].pixelStride * width / 2 - 1) + 1;
+-      yuvDesc.vRowStride = planes.planes[2].rowStride;
+-
+-      // Pixel stride is the same for u and v planes
+-      yuvDesc.uvPixelStride = planes.planes[1].pixelStride;
+-      ret.bufferDesc = yuvDesc;
+-    } else if(ret.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM) {
++        YuvHardwareBufferDesc yuvDesc;
++        yuvDesc.yData = (uint8_t*)planes.planes[0].data;
++        yuvDesc.yDataLength = planes.planes[0].rowStride * (height - 1) + width;
++        yuvDesc.yRowStride = planes.planes[0].rowStride;
++
++        yuvDesc.uData = (uint8_t*)planes.planes[1].data;
++        yuvDesc.uDataLength = planes.planes[1].rowStride * (height / 2 - 1) +
++                              (planes.planes[1].pixelStride * width / 2 - 1) + 1;
++        yuvDesc.uRowStride = planes.planes[1].rowStride;
++
++        yuvDesc.vData = (uint8_t*)planes.planes[2].data;
++        yuvDesc.vDataLength = planes.planes[2].rowStride * (height / 2 - 1) +
++                              (planes.planes[2].pixelStride * width / 2 - 1) + 1;
++        yuvDesc.vRowStride = planes.planes[2].rowStride;
++
++        // Pixel stride is the same for u and v planes
++        yuvDesc.uvPixelStride = planes.planes[1].pixelStride;
++        ret.bufferDesc = yuvDesc;
++    } else if (ret.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM) {
+         ARGBHardwareBufferDesc argbDesc;
+-        argbDesc.buf =  (uint8_t*) planes.planes[0].data;
+-        argbDesc.rowStride =   planes.planes[0].rowStride;
++        argbDesc.buf = (uint8_t*)planes.planes[0].data;
++        argbDesc.rowStride = planes.planes[0].rowStride;
+         ret.bufferDesc = argbDesc;
+     }
+     {
+@@ -154,6 +160,7 @@ void SdkFrameProvider::onEncoded(Buffer* producerBuffer, HardwareBufferDesc& des
+     }
+     if (mBufferProducer->queueFilledBuffer(producerBuffer) != Status::OK) {
+         ALOGE("%s Queueing filled buffer failed, something is wrong", __FUNCTION__);
++        mBufferProducer->cancelBuffer(producerBuffer);
+         return;
+     }
+ }
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
+index 27c184201dce04a5d0b3ed4a867da80adeb77bb2..dc975b285f60e14ad455aee8c7d7d38059089e69 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
++++ b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
+@@ -15,6 +15,7 @@
+  */
+ 
+ #pragma once
++#include <atomic>
+ #include <mutex>
+ #include <unordered_map>
+ 
+@@ -34,13 +35,13 @@ class SdkFrameProvider : public FrameProvider,
+ 
+     void setStreamConfig() override;
+     Status startStreaming() override;
+-    Status stopStreaming() final ;
++    Status stopStreaming() final;
+ 
+     Status encodeImage(AHardwareBuffer* hardwareBuffer, long timestamp, int rotation) override;
+ 
+     // EncoderCallback overrides
+     void onEncoded(Buffer* producerBuffer, HardwareBufferDesc& hardwareBufferDesc,
+-                           bool success) override;
++                   bool success) override;
+ 
+   private:
+     Status getHardwareBufferDescFromHardwareBuffer(AHardwareBuffer* hardwareBuffer,
+@@ -53,6 +54,7 @@ class SdkFrameProvider : public FrameProvider,
+             mBufferIdToAHardwareBuffer;  // guarded by mMapLock
+     uint32_t mNextBufferId = 0;          // guarded by mMapLock
+     std::shared_ptr<Encoder> mEncoder;
++    std::atomic<bool> mStreaming = false;
+ };
+ 
+ }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
-index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d23f1aed73 100644
+index 0710869c642ea86516d961407a539e3c48cd07dc..e071449961de41c22ba06f0665f38ed461530e29 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ 
+-//#define LOG_NDEBUG 0
++// #define LOG_NDEBUG 0
+ 
+ #include <jni.h>
+ #include <fstream>
 @@ -44,12 +44,13 @@ constexpr uint32_t USB_PAYLOAD_TRANSFER_SIZE = 3072;
  constexpr char kDeviceGlobPattern[] = "/dev/video*";
  constexpr char kUsbPayloadTransferSizeProperty[] = "vendor.usb.uvc.payload_transfer_size";
@@ -34,7 +2253,93 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
  
  namespace android {
  namespace webcam {
-@@ -272,6 +273,37 @@ void UVCProvider::UVCDevice::getFormatFrames(ConfigFormat* format) {
+@@ -65,7 +66,7 @@ Status EpollW::init() {
+ }
+ 
+ Status EpollW::add(int fd, uint32_t eventsIn) {
+-    struct epoll_event event {};
++    struct epoll_event event{};
+     event.data.fd = fd;
+     event.events = eventsIn;
+     if (epoll_ctl(mEpollFd.get(), EPOLL_CTL_ADD, fd, &event) != 0) {
+@@ -76,7 +77,7 @@ Status EpollW::add(int fd, uint32_t eventsIn) {
+ }
+ 
+ Status EpollW::modify(int fd, uint32_t newEvents) {
+-    struct epoll_event event {};
++    struct epoll_event event{};
+     event.data.fd = fd;
+     event.events = newEvents;
+     // TODO(b/267794640): Could we use CTL_MOD instead with UVC, reliably.
+@@ -92,7 +93,7 @@ Status EpollW::modify(int fd, uint32_t newEvents) {
+ }
+ 
+ Status EpollW::remove(int fd) {
+-    struct epoll_event event {};
++    struct epoll_event event{};
+     if (epoll_ctl(mEpollFd.get(), EPOLL_CTL_DEL, fd, &event) != 0) {
+         ALOGE("%s Epoll_ctl DEL failed %s \n", __FUNCTION__, strerror(errno));
+         return Status::ERROR;
+@@ -116,7 +117,7 @@ Events EpollW::waitForEvents() {
+ }
+ 
+ Status UVCProvider::UVCDevice::openV4L2DeviceAndSubscribe(const std::string& videoNode) {
+-    struct v4l2_capability cap {};
++    struct v4l2_capability cap{};
+     int fd = open(videoNode.c_str(), O_RDWR);
+     if (fd < 0) {
+         ALOGE("%s Couldn't open V4L2 device %s err: %d fd %d, err str %s", __FUNCTION__,
+@@ -128,10 +129,10 @@ Status UVCProvider::UVCDevice::openV4L2DeviceAndSubscribe(const std::string& vid
+     mUVCFd.reset(fd);
+ 
+     // Set up inotify to watch for V4L2 node removal before before setting up anything else.
+-    int inotifyFd = inotify_init();
++    int inotifyFd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+     if (inotifyFd < 0) {
+-        ALOGE("%s: Couldn't create an inotify fd. Error(%d): %s", __FUNCTION__,
+-              errno, strerror(errno));
++        ALOGE("%s: Couldn't create an inotify fd. Error(%d): %s", __FUNCTION__, errno,
++              strerror(errno));
+         return Status::ERROR;
+     }
+     mINotifyFd.reset(inotifyFd);
+@@ -163,7 +164,7 @@ Status UVCProvider::UVCDevice::openV4L2DeviceAndSubscribe(const std::string& vid
+     mUVCProperties = parseUvcProperties();
+ 
+     // Subscribe to events
+-    struct v4l2_event_subscription subscription {};
++    struct v4l2_event_subscription subscription{};
+     std::vector<unsigned long> events = {UVC_EVENT_SETUP, UVC_EVENT_DATA, UVC_EVENT_STREAMON,
+                                          UVC_EVENT_STREAMOFF, UVC_EVENT_DISCONNECT};
+ 
+@@ -185,7 +186,7 @@ static bool isVideoOutputDevice(const char* dev) {
+         return false;
+     }
+ 
+-    struct v4l2_capability capability {};
++    struct v4l2_capability capability{};
+     int ret = ioctl(fd.get(), VIDIOC_QUERYCAP, &capability);
+     if (ret < 0) {
+         ALOGV("%s v4l2 QUERYCAP %s failed %s", __FUNCTION__, dev, strerror(errno));
+@@ -203,7 +204,7 @@ static bool isVideoOutputDevice(const char* dev) {
+ void UVCProvider::UVCDevice::getFrameIntervals(ConfigFrame* frame, ConfigFormat* format) {
+     uint32_t index = 0;
+     while (true) {
+-        struct v4l2_frmivalenum intervalDesc {};
++        struct v4l2_frmivalenum intervalDesc{};
+         intervalDesc.index = index;
+         intervalDesc.pixel_format = format->fcc;
+         intervalDesc.width = frame->width;
+@@ -238,7 +239,7 @@ void UVCProvider::UVCDevice::getFrameIntervals(ConfigFrame* frame, ConfigFormat*
+ void UVCProvider::UVCDevice::getFormatFrames(ConfigFormat* format) {
+     uint32_t index = 0;
+     while (true) {
+-        struct v4l2_frmsizeenum frameDesc {};
++        struct v4l2_frmsizeenum frameDesc{};
+         frameDesc.index = index;
+         frameDesc.pixel_format = format->fcc;
+         ALOGI("Getting frames for format index %u", index);
+@@ -272,15 +273,48 @@ void UVCProvider::UVCDevice::getFormatFrames(ConfigFormat* format) {
      }
  }
  
@@ -44,35 +2349,35 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
 +    frame.width = width;
 +    frame.height = height;
 +    frame.intervals = {
-+            166666,   // 60 fps
-+            333333,   // 30 fps
-+            666666,   // 15 fps
-+            1000000,  // 10 fps
-+            5000000,  // 2 fps
++            333333,  // 30 fps
++            666666,  // 15 fps
 +    };
 +    return frame;
 +}
 +
 +static std::vector<ConfigFormat> getDefaultUvcFormats() {
++    ConfigFormat mjpeg{};
++    mjpeg.formatIndex = 0;
++    mjpeg.fcc = V4L2_PIX_FMT_MJPEG;
++    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 0, /*width*/ 1280, /*height*/ 720));
++    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 1, /*width*/ 640, /*height*/ 360));
++    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 2, /*width*/ 1920, /*height*/ 1080));
++
 +    ConfigFormat yuyv{};
-+    yuyv.formatIndex = 0;
++    yuyv.formatIndex = 1;
 +    yuyv.fcc = V4L2_PIX_FMT_YUYV;
 +    yuyv.frames.emplace_back(makeConfigFrame(/*index*/ 0, /*width*/ 640, /*height*/ 360));
 +
-+    ConfigFormat mjpeg{};
-+    mjpeg.formatIndex = 1;
-+    mjpeg.fcc = V4L2_PIX_FMT_MJPEG;
-+    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 0, /*width*/ 640, /*height*/ 360));
-+    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 1, /*width*/ 1280, /*height*/ 720));
-+    mjpeg.frames.emplace_back(makeConfigFrame(/*index*/ 2, /*width*/ 1920, /*height*/ 1080));
-+
-+    return {yuyv, mjpeg};
++    return {mjpeg, yuyv};
 +}
 +
  std::vector<ConfigFormat> UVCProvider::UVCDevice::getFormats() {
      std::vector<ConfigFormat> retVal;
      for (uint32_t index = 0; true; ++index) {
-@@ -281,6 +313,11 @@ std::vector<ConfigFormat> UVCProvider::UVCDevice::getFormats() {
+         ALOGI("Getting formats for index %u", index);
+-        struct v4l2_fmtdesc formatDesc {};
++        struct v4l2_fmtdesc formatDesc{};
+         formatDesc.index = index;
          formatDesc.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
          int ret = ioctl(mUVCFd.get(), VIDIOC_ENUM_FMT, &formatDesc);
          if (ret != 0) {
@@ -84,7 +2389,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
              return retVal;
          }
          if (formatDesc.index != index) {
-@@ -292,6 +329,11 @@ std::vector<ConfigFormat> UVCProvider::UVCDevice::getFormats() {
+@@ -292,6 +326,11 @@ std::vector<ConfigFormat> UVCProvider::UVCDevice::getFormats() {
          configFormat.formatIndex = formatDesc.index;  // TODO: Double check with jchowdhary@
          configFormat.fcc = formatDesc.pixelformat;
          getFormatFrames(&configFormat);
@@ -96,7 +2401,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
          retVal.emplace_back(configFormat);
      }
  }
-@@ -309,10 +351,6 @@ UVCProvider::UVCDevice::UVCDevice(std::weak_ptr<UVCProvider> parent,
+@@ -309,10 +348,6 @@ UVCProvider::UVCDevice::UVCDevice(std::weak_ptr<UVCProvider> parent,
                                    const std::unordered_set<std::string>& ignoredNodes) {
      mParent = std::move(parent);
  
@@ -107,7 +2412,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
      mVideoNode = getVideoNode(ignoredNodes);
  
      if (mVideoNode.empty()) {
-@@ -325,7 +363,7 @@ UVCProvider::UVCDevice::UVCDevice(std::weak_ptr<UVCProvider> parent,
+@@ -325,15 +360,23 @@ UVCProvider::UVCDevice::UVCDevice(std::weak_ptr<UVCProvider> parent,
                mVideoNode.c_str());
          return;
      }
@@ -116,7 +2421,36 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
      mInited = true;
  }
  
-@@ -371,9 +409,19 @@ bool UVCProvider::UVCDevice::isInited() const {
++UVCProvider::UVCDevice::~UVCDevice() {
++    // BufferManager needs the V4L2 fd while it unmaps and releases its buffers.
++    if (mInited) {
++        processStreamOffEvent();
++    }
++    closeUVCFd();
++}
++
+ void UVCProvider::UVCDevice::closeUVCFd() {
+-    mINotifyFd.reset(); // No need to inotify_rm_watch as closing the fd frees up resources
++    mINotifyFd.reset();  // No need to inotify_rm_watch as closing the fd frees up resources
+ 
+     if (mUVCFd.get() >= 0) {
+-        struct v4l2_event_subscription subscription {};
++        struct v4l2_event_subscription subscription{};
+         subscription.type = V4L2_EVENT_ALL;
+ 
+         if (ioctl(mUVCFd.get(), VIDIOC_UNSUBSCRIBE_EVENT, subscription) < 0) {
+@@ -354,7 +397,9 @@ std::string UVCProvider::getVideoNode(const std::unordered_set<std::string>& ign
+         ALOGV("%s file: %s", __FUNCTION__, node);
+ 
+         // Skip if the node should be ignored
+-        if (ignoredNodes.find(node) != ignoredNodes.end()) { continue; }
++        if (ignoredNodes.find(node) != ignoredNodes.end()) {
++            continue;
++        }
+ 
+         if (isVideoOutputDevice(node)) {
+             devNode = globRes.gl_pathv[i];
+@@ -371,9 +416,19 @@ bool UVCProvider::UVCDevice::isInited() const {
  
  void UVCProvider::UVCDevice::processSetupControlEvent(const struct usb_ctrlrequest* control,
                                                        struct uvc_request_data* resp) {
@@ -139,7 +2473,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
  }
  
  void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlrequest* request,
-@@ -382,12 +430,16 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+@@ -382,12 +437,16 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
      uint8_t controlSelect = request->wValue >> 8;
      if (controlSelect != UVC_VS_PROBE_CONTROL && controlSelect != UVC_VS_COMMIT_CONTROL) {
          ALOGE("%s: control select %u is invalid", __FUNCTION__, controlSelect);
@@ -157,7 +2491,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
      FormatTriplet maxFormatTriplet(/*formatIndex*/ UINT8_MAX,
                                     /*frameSizeIndex*/ UINT8_MAX,
                                     /*frameInterval*/ UINT32_MAX);
-@@ -397,13 +449,13 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+@@ -397,13 +456,13 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
      switch (requestType) {
          case UVC_SET_CUR:
              mCurrentControlState = controlSelect;
@@ -173,7 +2507,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
                  memcpy(ctrl, &mCommit, sizeof(struct uvc_streaming_control));
              }
              break;
-@@ -418,9 +470,9 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+@@ -418,9 +477,9 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
              memset(ctrl, 0, sizeof(struct uvc_streaming_control));
              break;
          case UVC_GET_LEN:
@@ -185,7 +2519,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
              response->length = 2;
              break;
          case UVC_GET_INFO:
-@@ -437,18 +489,58 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
+@@ -437,18 +496,57 @@ void UVCProvider::UVCDevice::processSetupStreamingEvent(const struct usb_ctrlreq
  void UVCProvider::UVCDevice::processSetupClassEvent(const struct usb_ctrlrequest* request,
                                                      struct uvc_request_data* response) {
      uint8_t interface = request->wIndex & 0xff;
@@ -193,8 +2527,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
 +    uint8_t entity = request->wIndex >> 8;
 +    uint8_t requestType = request->bRequest;
 +    uint8_t controlSelect = request->wValue >> 8;
-+    ALOGV("%s: interface %u entity %u control %u", __FUNCTION__, interface, entity,
-+          controlSelect);
++    ALOGV("%s: interface %u entity %u control %u", __FUNCTION__, interface, entity, controlSelect);
  
      if ((request->bRequestType & USB_RECIP_MASK) != USB_RECIP_INTERFACE) {
          ALOGE("Invalid bRequestType byte %u", request->bRequestType);
@@ -246,7 +2579,7 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
  }
  
  void UVCProvider::UVCDevice::processSetupEvent(const struct usb_ctrlrequest* request,
-@@ -475,22 +567,29 @@ void UVCProvider::UVCDevice::processSetupEvent(const struct usb_ctrlrequest* req
+@@ -475,22 +573,29 @@ void UVCProvider::UVCDevice::processSetupEvent(const struct usb_ctrlrequest* req
  void UVCProvider::UVCDevice::setStreamingControl(struct uvc_streaming_control* streamingControl,
                                                   const FormatTriplet* req) {
      // frame and format index start from 1.
@@ -270,7 +2603,8 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
          return;
      }
      ALOGV("%s: chosenFormatIndex %d chosenFrameIndex: %d", __FUNCTION__, chosenFormatIndex,
-             chosenFrameIndex);
+-            chosenFrameIndex);
++          chosenFrameIndex);
      const ConfigFrame& chosenFrame = chosenFormat.frames[chosenFrameIndex - 1];
 +    if (chosenFrame.intervals.empty()) {
 +        ALOGE("%s No frame intervals for format %u frame %u", __FUNCTION__, chosenFormatIndex,
@@ -280,16 +2614,36 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
      uint32_t reqFrameInterval = req->frameInterval;
      bool largerFound = false;
      // Choose the first frame interval >= requested. Frame intervals are expected to be in
-@@ -539,6 +638,31 @@ void UVCProvider::UVCDevice::setStreamingControl(struct uvc_streaming_control* s
+@@ -516,16 +621,16 @@ void UVCProvider::UVCDevice::setStreamingControl(struct uvc_streaming_control* s
+     streamingControl->bFormatIndex = chosenFormatIndex;
+     streamingControl->bFrameIndex = chosenFrameIndex;
+     streamingControl->dwFrameInterval = reqFrameInterval;
+-    streamingControl->dwMaxPayloadTransferSize = GetUintProperty(kUsbPayloadTransferSizeProperty,
+-                                                                 USB_PAYLOAD_TRANSFER_SIZE);
++    streamingControl->dwMaxPayloadTransferSize =
++            GetUintProperty(kUsbPayloadTransferSizeProperty, USB_PAYLOAD_TRANSFER_SIZE);
+     switch (streamingControl->dwMaxPayloadTransferSize) {
+         case 1024:
+         case 2048:
+         case 3072:
+             break;
+         default:
+-            ALOGE("%s Invalid dwMaxPayloadTransferSize from property: %d",
+-                  __FUNCTION__, streamingControl->dwMaxPayloadTransferSize);
++            ALOGE("%s Invalid dwMaxPayloadTransferSize from property: %d", __FUNCTION__,
++                  streamingControl->dwMaxPayloadTransferSize);
+             streamingControl->dwMaxPayloadTransferSize = USB_PAYLOAD_TRANSFER_SIZE;
+             break;
+     }
+@@ -539,6 +644,30 @@ void UVCProvider::UVCDevice::setStreamingControl(struct uvc_streaming_control* s
      }
  }
  
 +bool UVCProvider::UVCDevice::isStreamingControlValid(
 +        const struct uvc_streaming_control& streamingControl) const {
 +    return streamingControl.bFormatIndex != 0 && streamingControl.bFrameIndex != 0 &&
-+            streamingControl.dwFrameInterval != 0 &&
-+            streamingControl.dwMaxVideoFrameSize != 0 &&
-+            streamingControl.dwMaxPayloadTransferSize != 0;
++           streamingControl.dwFrameInterval != 0 && streamingControl.dwMaxVideoFrameSize != 0 &&
++           streamingControl.dwMaxPayloadTransferSize != 0;
 +}
 +
 +void UVCProvider::UVCDevice::ensureStreamingControl(
@@ -312,7 +2666,44 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
  void UVCProvider::UVCDevice::commitControls() {
      const ConfigFormat& commitFormat = mUVCProperties->streaming.formats[mCommit.bFormatIndex - 1];
      const ConfigFrame& commitFrame = commitFormat.frames[mCommit.bFrameIndex - 1];
-@@ -693,15 +817,7 @@ void UVCProvider::UVCDevice::destroyBuffers(std::shared_ptr<Buffer>& consumerBuf
+@@ -586,7 +715,7 @@ void UVCProvider::UVCDevice::processDataEvent(const struct uvc_request_data* dat
+ }
+ 
+ std::shared_ptr<Buffer> UVCProvider::UVCDevice::mapBuffer(uint32_t i) {
+-    struct v4l2_buffer buffer {};
++    struct v4l2_buffer buffer{};
+ 
+     buffer.index = i;
+     buffer.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+@@ -618,7 +747,7 @@ Status UVCProvider::UVCDevice::allocateAndMapBuffers(
+     }
+     *consumerBuffer = nullptr;
+     producerBuffers->clear();
+-    struct v4l2_requestbuffers requestBuffers {};
++    struct v4l2_requestbuffers requestBuffers{};
+ 
+     requestBuffers.count = NUM_BUFFERS_ALLOC;
+     requestBuffers.memory = V4L2_MEMORY_MMAP;
+@@ -660,6 +789,9 @@ Status UVCProvider::UVCDevice::allocateAndMapBuffers(
+ }
+ 
+ Status UVCProvider::UVCDevice::unmapBuffer(std::shared_ptr<Buffer>& buffer) {
++    if (buffer == nullptr) {
++        return Status::OK;
++    }
+     if (buffer->getMem() != nullptr) {
+         if (munmap(buffer->getMem(), buffer->getLength()) < 0) {
+             ALOGE("%s: munmap failed for buffer with pointer %p", __FUNCTION__, buffer->getMem());
+@@ -681,7 +813,7 @@ void UVCProvider::UVCDevice::destroyBuffers(std::shared_ptr<Buffer>& consumerBuf
+                   __FUNCTION__);
+         }
+     }
+-    struct v4l2_requestbuffers zeroRequest {};
++    struct v4l2_requestbuffers zeroRequest{};
+     zeroRequest.count = 0;
+     zeroRequest.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+     zeroRequest.memory = V4L2_MEMORY_MMAP;
+@@ -693,16 +825,22 @@ void UVCProvider::UVCDevice::destroyBuffers(std::shared_ptr<Buffer>& consumerBuf
  }
  
  Status UVCProvider::UVCDevice::getFrameAndQueueBufferToGadgetDriver(bool firstBuffer) {
@@ -324,18 +2715,29 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
 -            ALOGE("%s: VIDIOC_STREAMON failed %s", __FUNCTION__, strerror(errno));
 -            return Status::ERROR;
 -        }
--    }
-     Buffer* buffer = mBufferManager->getFilledBufferAndSwap();
++    std::shared_ptr<BufferManager> bufferManager;
++    {
++        std::lock_guard<std::mutex> lock(mStreamLock);
++        bufferManager = mBufferManager;
++    }
++    if (bufferManager == nullptr) {
++        ALOGE("%s: No active buffer manager", __FUNCTION__);
++        return Status::ERROR;
++    }
++
++    Buffer* buffer = bufferManager->getFilledBufferAndSwap();
++    if (buffer == nullptr) {
++        ALOGE("%s: No encoded frame available", __FUNCTION__);
++        return Status::ERROR;
+     }
+-    Buffer* buffer = mBufferManager->getFilledBufferAndSwap();
      struct v4l2_buffer v4L2Buffer = *(static_cast<V4L2Buffer*>(buffer)->getV4L2Buffer());
      ALOGV("%s: got buffer, queueing it with index %u", __FUNCTION__, v4L2Buffer.index);
-@@ -710,22 +826,32 @@ Status UVCProvider::UVCDevice::getFrameAndQueueBufferToGadgetDriver(bool firstBu
+ 
+@@ -710,64 +848,109 @@ Status UVCProvider::UVCDevice::getFrameAndQueueBufferToGadgetDriver(bool firstBu
          ALOGE("%s: VIDIOC_QBUF failed on gadget driver: %s", __FUNCTION__, strerror(errno));
          return Status::ERROR;
      }
-+
-+    // Complete the host's SET_INTERFACE only after the first camera frame is queued. OBS starts
-+    // its short capture timeout as soon as STREAMON returns, so enabling the endpoint earlier can
-+    // make it reset the device before the camera has produced its first frame.
 +    if (firstBuffer) {
 +        int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 +        if (ioctl(mUVCFd.get(), VIDIOC_STREAMON, &type) < 0) {
@@ -348,40 +2750,353 @@ index 0710869c642ea86516d961407a539e3c48cd07dc..a71ed198954ef14c0cf1c9981025c8d2
  }
  
  void UVCProvider::UVCDevice::processStreamOffEvent() {
-+    mFrameProvider.reset();
-+
-     int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-     if (ioctl(mUVCFd.get(), VIDIOC_STREAMOFF, &type) < 0) {
-         ALOGE("%s: uvc gadget driver request to switch stream off failed %s", __FUNCTION__,
-               strerror(errno));
+-    int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+-    if (ioctl(mUVCFd.get(), VIDIOC_STREAMOFF, &type) < 0) {
+-        ALOGE("%s: uvc gadget driver request to switch stream off failed %s", __FUNCTION__,
+-              strerror(errno));
 -        return;
++    mStreaming = false;
++
++    if (mUVCFd.get() >= 0) {
++        int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
++        if (ioctl(mUVCFd.get(), VIDIOC_STREAMOFF, &type) < 0) {
++            if (errno != EINVAL) {
++                ALOGE("%s: uvc gadget driver request to switch stream off failed %s", __FUNCTION__,
++                      strerror(errno));
++            }
++        }
++    }
++
++    std::shared_ptr<FrameProvider> frameProvider;
++    std::shared_ptr<BufferManager> bufferManager;
++    {
++        std::lock_guard<std::mutex> lock(mStreamLock);
++        frameProvider.swap(mFrameProvider);
++        bufferManager.swap(mBufferManager);
      }
  
 -    mFrameProvider.reset();
-     mBufferManager.reset();
+-    mBufferManager.reset();
 -    memset(&mCommit, 0, sizeof(mCommit));
 -    memset(&mProbe, 0, sizeof(mProbe));
++    // Stop camera and encoder work before unmapping their destination buffers.
++    if (frameProvider != nullptr) {
++        frameProvider->stopStreaming();
++    }
++    frameProvider.reset();
++    bufferManager.reset();
 +    resetStreamingControls();
      memset(&mV4l2Format, 0, sizeof(mV4l2Format));
      mFps = 0;
  }
-@@ -813,7 +939,10 @@ void UVCProvider::processUVCEvent() {
+ 
+ void UVCProvider::UVCDevice::processStreamOnEvent() {
++    bool hasPreviousStream;
++    {
++        std::lock_guard<std::mutex> lock(mStreamLock);
++        hasPreviousStream = mFrameProvider != nullptr || mBufferManager != nullptr;
++    }
++    if (hasPreviousStream) {
++        ALOGW("%s: Cleaning up stale stream state before STREAMON", __FUNCTION__);
++        processStreamOffEvent();
++    }
++    mStreaming = false;
++
+     // Allocate V4L2 and map buffers for circulation between camera and UVCDevice
+-    mBufferManager = std::make_shared<BufferManager>(this);
++    auto bufferManager = std::make_shared<BufferManager>(this);
+     CameraConfig config;
+     config.width = mV4l2Format.fmt.pix.width;
+     config.height = mV4l2Format.fmt.pix.height;
+     config.fcc = mV4l2Format.fmt.pix.pixelformat;
+     config.fps = mFps;
+ 
+-    mFrameProvider = std::make_shared<SdkFrameProvider>(mBufferManager, config);
+-    mFrameProvider->setStreamConfig();
+-    mFrameProvider->startStreaming();
++    auto frameProvider = std::make_shared<SdkFrameProvider>(bufferManager, config);
++    if (!bufferManager->isInited() || !frameProvider->isInited()) {
++        ALOGE("%s: Failed to initialize stream buffers or frame provider", __FUNCTION__);
++        frameProvider.reset();
++        bufferManager.reset();
++        // Release the delayed SET_INTERFACE status even though STREAMON was
++        // never reached, otherwise the host control request remains stuck.
++        processStreamOffEvent();
++        return;
++    }
++
++    {
++        std::lock_guard<std::mutex> lock(mStreamLock);
++        mBufferManager = bufferManager;
++        mFrameProvider = frameProvider;
++    }
++    frameProvider->setStreamConfig();
++    if (frameProvider->startStreaming() != Status::OK) {
++        ALOGE("%s: Failed to start camera streaming", __FUNCTION__);
++        processStreamOffEvent();
++        return;
++    }
+ 
+-    // Queue first buffer to start the stream
++    // Wait for a real camera frame and queue it before completing STREAMON.
+     if (getFrameAndQueueBufferToGadgetDriver(true) != Status::OK) {
+         ALOGE("%s: Queueing first buffer to gadget driver failed, stream not started",
+               __FUNCTION__);
++        processStreamOffEvent();
+         return;
+     }
++    mStreaming = true;
+     auto parent = mParent.lock();
+-    parent->watchStreamEvent();
++    if (parent != nullptr) {
++        parent->watchStreamEvent();
++    }
+ }
+ 
+ UVCProvider::~UVCProvider() {
+-    if (mUVCListenerThread.joinable()) {
+-        mListenToUVCFds = false;
+-        mUVCListenerThread.join();
+-    }
+-
+-    if (mUVCDevice) {
+-        if (mUVCDevice->getUVCFd() >= 0) {
+-            mEpollW.remove(mUVCDevice->getUVCFd());
+-        }
+-        if (mUVCDevice->getINotifyFd() >= 0) {
+-            mEpollW.remove(mUVCDevice->getINotifyFd());
+-        }
+-    }
+-    mUVCDevice = nullptr;
++    stopAndWaitForUVCListenerThread();
++    mUVCDevice.reset();
+ }
+ 
+ Status UVCProvider::init() {
+@@ -776,30 +959,54 @@ Status UVCProvider::init() {
+ }
+ 
+ void UVCProvider::UVCDevice::processStreamEvent() {
++    if (!mStreaming) {
++        return;
++    }
++
+     // Dequeue producer buffer
+-    struct v4l2_buffer v4L2Buffer {};
++    struct v4l2_buffer v4L2Buffer{};
+     v4L2Buffer.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+     v4L2Buffer.memory = V4L2_MEMORY_MMAP;
+ 
+     if (ioctl(mUVCFd.get(), VIDIOC_DQBUF, &v4L2Buffer) < 0) {
++        if (errno == EAGAIN || errno == EINTR) {
++            return;
++        }
+         ALOGE("%s: VIDIOC_DQBUF failed %s", __FUNCTION__, strerror(errno));
++        processStreamOffEvent();
++        auto parent = mParent.lock();
++        if (parent != nullptr) {
++            parent->watchControlEvents();
++        }
+         return;
+     }
+     // Get camera frame and queue it to gadget driver
+     if (getFrameAndQueueBufferToGadgetDriver() != Status::OK) {
++        ALOGE("%s: Camera frame production stopped; shutting down the current stream",
++              __FUNCTION__);
++        processStreamOffEvent();
++        auto parent = mParent.lock();
++        if (parent != nullptr) {
++            parent->watchControlEvents();
++        }
+         return;
+     }
+ }
+ Status UVCProvider::UVCDevice::encodeImage(AHardwareBuffer* buffer, long timestamp, int rotation) {
+-    if (mFrameProvider == nullptr) {
++    std::shared_ptr<FrameProvider> frameProvider;
++    {
++        std::lock_guard<std::mutex> lock(mStreamLock);
++        frameProvider = mFrameProvider;
++    }
++    if (frameProvider == nullptr) {
+         ALOGE("%s: encodeImage called but there is no frame provider active", __FUNCTION__);
+         return Status::ERROR;
+     }
+-    return mFrameProvider->encodeImage(buffer, timestamp, rotation);
++    return frameProvider->encodeImage(buffer, timestamp, rotation);
+ }
+ 
+ void UVCProvider::processUVCEvent() {
+-    struct v4l2_event event {};
++    struct v4l2_event event{};
+     int deviceFd = mUVCDevice->getUVCFd();
+ 
+     if (ioctl(deviceFd, VIDIOC_DQEVENT, &event) < 0) {
+@@ -807,13 +1014,18 @@ void UVCProvider::processUVCEvent() {
+         return;
+     }
+     struct uvc_event* uvcEvent = reinterpret_cast<struct uvc_event*>(&event.u.data);
+-    struct uvc_request_data uvcResponse {};
++    struct uvc_request_data uvcResponse{};
+     switch (event.type) {
+         case UVC_EVENT_CONNECT:
++            ALOGI("%s Connect event", __FUNCTION__);
++            watchControlEvents();
              return;
          case UVC_EVENT_DISCONNECT:
              ALOGI("%s Disconnect event", __FUNCTION__);
 -            stopService();
-+            // A cable disconnect does not remove the gadget node. Keep the listener alive so the
-+            // same UVC function can answer control requests immediately after reconnection.
++            // A cable disconnect does not remove the persistent UVC gadget node on CaCamOS.
++            // Keep this listener alive so the same fd can answer a new host enumeration.
 +            mUVCDevice->processStreamOffEvent();
-+            mEpollW.modify(mUVCDevice->getUVCFd(), EPOLLPRI);
++            watchControlEvents();
              return;
          case UVC_EVENT_SETUP:
              ALOGV(" %s: Setup event ", __FUNCTION__);
+@@ -848,6 +1060,12 @@ void UVCProvider::watchStreamEvent() {
+     mEpollW.modify(mUVCDevice->getUVCFd(), EPOLLPRI | EPOLLOUT);
+ }
+ 
++void UVCProvider::watchControlEvents() {
++    if (mUVCDevice != nullptr) {
++        mEpollW.modify(mUVCDevice->getUVCFd(), EPOLLPRI);
++    }
++}
++
+ void UVCProvider::ListenToUVCFds() {
+     // For UVC events
+     ALOGI("%s Start to listen to device fd %d and inotify_fd %d", __FUNCTION__,
+@@ -858,13 +1076,13 @@ void UVCProvider::ListenToUVCFds() {
+     // Listen to V4L2 events
+     mEpollW.add(mUVCDevice->getUVCFd(), EPOLLPRI);
+     // For stream events : dequeue and queue buffers
+-    while (mListenToUVCFds) {
++    while (mListenToUVCFds.load()) {
+         Events events = mEpollW.waitForEvents();
+         for (auto event : events) {
+             if (mUVCDevice->getINotifyFd() == event.data.fd && (event.events & EPOLLIN)) {
+                 // File system event on the V4L2 node
+                 if (processINotifyEvent()) {
+-                    break; // Stop handling current events if the service was stopped.
++                    break;  // Stop handling current events if the service was stopped.
+                 }
+             } else {
+                 // V4L2 event
+@@ -893,7 +1111,7 @@ bool UVCProvider::processINotifyEvent() {
+     constexpr size_t BUF_SIZE = sizeof(struct inotify_event) + NAME_MAX + 1;
+     char buf[BUF_SIZE];
+     int len = 0;
+-    while ((len = read(mUVCDevice->getINotifyFd(), buf, BUF_SIZE)) >= 0) {
++    while ((len = read(mUVCDevice->getINotifyFd(), buf, BUF_SIZE)) > 0) {
+         for (int i = 0; i < len;) {
+             struct inotify_event* event = reinterpret_cast<inotify_event*>(&buf[i]);
+             i += sizeof(struct inotify_event) + event->len;
+@@ -913,8 +1131,10 @@ bool UVCProvider::processINotifyEvent() {
+             }
+         }
+     }
+-    ALOGV("%s: Could not read from inotify_fd(%d). Error(%d): %s", __FUNCTION__,
+-          mUVCDevice->getINotifyFd(), errno, strerror(errno));
++    if (len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
++        ALOGE("%s: Could not read from inotify_fd(%d). Error(%d): %s", __FUNCTION__,
++              mUVCDevice->getINotifyFd(), errno, strerror(errno));
++    }
+     return false;
+ }
+ 
+@@ -927,7 +1147,7 @@ int UVCProvider::encodeImage(AHardwareBuffer* buffer, long timestamp, int rotati
+ }
+ 
+ void UVCProvider::startUVCListenerThread() {
+-    mListenToUVCFds = true;
++    mListenToUVCFds.store(true);
+     mUVCListenerThread =
+             DeviceAsWebcamNative::createJniAttachedThread(&UVCProvider::ListenToUVCFds, this);
+     ALOGI("Started new UVCListenerThread");
+@@ -935,37 +1155,38 @@ void UVCProvider::startUVCListenerThread() {
+ 
+ void UVCProvider::stopAndWaitForUVCListenerThread() {
+     // This thread stays alive till onDestroy is called.
++    mListenToUVCFds.store(false);
+     if (mUVCListenerThread.joinable()) {
+-        mListenToUVCFds = false;
+         mUVCListenerThread.join();
+     }
+ }
+ 
+ Status UVCProvider::startService(const std::unordered_set<std::string>& ignoredNodes) {
+-    // Resets old state for epoll since this is a new start for the service.
+-    mEpollW.init();
+-    if (mUVCDevice != nullptr) {
+-        mUVCDevice->closeUVCFd();
++    stopAndWaitForUVCListenerThread();
++    mUVCDevice.reset();
++    // Reset epoll only after the previous listener and descriptors are gone.
++    if (mEpollW.init() != Status::OK) {
++        return Status::ERROR;
+     }
+     mUVCDevice = std::make_shared<UVCDevice>(shared_from_this(), ignoredNodes);
+     if (!mUVCDevice->isInited()) {
+         return Status::ERROR;
+     }
+-    stopAndWaitForUVCListenerThread();  // Just in case it is already running
+     startUVCListenerThread();
+     return Status::OK;
+ }
+ 
+ void UVCProvider::stopService() {
+-    // TODO: Try removing this
++    if (mUVCDevice == nullptr) {
++        mListenToUVCFds.store(false);
++        return;
++    }
++
+     mUVCDevice->processStreamOffEvent();
+-    mEpollW.remove(mUVCDevice->getUVCFd());
+-    mEpollW.remove(mUVCDevice->getINotifyFd());
++    mListenToUVCFds.store(false);
+     // Signal the service to stop.
+     // UVC Provider will get destructed when the Java Service is destroyed.
+     DeviceAsWebcamServiceManager::kInstance->stopService();
+-    mUVCDevice = nullptr;
+-    mListenToUVCFds = false;
+ }
+ 
+ }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
-index b1343986a734bf17e021687732cb84a6bcf47703..f7ea74e4ef1a7c31db25f45dab3f1758b474c905 100644
+index b1343986a734bf17e021687732cb84a6bcf47703..c54b48e9e904c6b26b90fbd652dd9e1754f6c5a5 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
-@@ -157,6 +157,9 @@ class UVCProvider : public std::enable_shared_from_this<UVCProvider> {
+@@ -25,9 +25,10 @@
+ #include <linux/usb/g_uvc.h>
+ #include <linux/usb/video.h>
+ #include <atomic>
++#include <mutex>
+ #include <thread>
+-#include <vector>
+ #include <unordered_set>
++#include <vector>
+ 
+ namespace android {
+ namespace webcam {
+@@ -110,6 +111,7 @@ class UVCProvider : public std::enable_shared_from_this<UVCProvider> {
+     int encodeImage(AHardwareBuffer* hardwareBuffer, long timestamp, jint rotation);
+ 
+     void watchStreamEvent();
++    void watchControlEvents();
+ 
+   private:
+     // Created after a UVC_SETUP event has been received and processed by UVCProvider
+@@ -119,7 +121,7 @@ class UVCProvider : public std::enable_shared_from_this<UVCProvider> {
+       public:
+         explicit UVCDevice(std::weak_ptr<UVCProvider> parent,
+                            const std::unordered_set<std::string>& ignoredNodes);
+-        ~UVCDevice() override = default;
++        ~UVCDevice() override;
+         void closeUVCFd();
+         [[nodiscard]] bool isInited() const;
+         int getUVCFd() { return mUVCFd.get(); }
+@@ -157,6 +159,9 @@ class UVCProvider : public std::enable_shared_from_this<UVCProvider> {
          Status openV4L2DeviceAndSubscribe(const std::string& videoNode);
          void setStreamingControl(struct uvc_streaming_control* streamingControl,
                                   const FormatTriplet* req);
@@ -391,8 +3106,43 @@ index b1343986a734bf17e021687732cb84a6bcf47703..f7ea74e4ef1a7c31db25f45dab3f1758
          void commitControls();
  
          std::shared_ptr<Buffer> mapBuffer(uint32_t i);
+@@ -164,20 +169,22 @@ class UVCProvider : public std::enable_shared_from_this<UVCProvider> {
+ 
+         Status getFrameAndQueueBufferToGadgetDriver(bool firstBuffer = false);
+ 
+-        struct uvc_streaming_control mProbe {};
+-        struct uvc_streaming_control mCommit {};
++        struct uvc_streaming_control mProbe{};
++        struct uvc_streaming_control mCommit{};
+         uint8_t mCurrentControlState = UVC_VS_CONTROL_UNDEFINED;
+         std::weak_ptr<UVCProvider> mParent;
+         std::shared_ptr<UVCProperties> mUVCProperties;
++        std::mutex mStreamLock;
+         std::shared_ptr<BufferManager> mBufferManager;
+         std::shared_ptr<FrameProvider> mFrameProvider;
++        std::atomic<bool> mStreaming = false;
+ 
+         unique_fd mUVCFd;
+         unique_fd mINotifyFd;
+ 
+         // Path to /dev/video*, this is the node we open up and poll the fd for uvc / v4l2 events.
+         std::string mVideoNode;
+-        struct v4l2_format mV4l2Format {};
++        struct v4l2_format mV4l2Format{};
+         uint32_t mFps = 0;
+         bool mInited = false;
+     };
+@@ -192,7 +199,7 @@ class UVCProvider : public std::enable_shared_from_this<UVCProvider> {
+ 
+     std::shared_ptr<UVCDevice> mUVCDevice;
+     std::thread mUVCListenerThread;
+-    volatile bool mListenToUVCFds = true;
++    std::atomic<bool> mListenToUVCFds = false;
+     EpollW mEpollW;
+ };
+ 
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
-index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..440dbfd8256c54a80e58a18f6caccab87c26681c 100644
+index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..cfb7e641c3ed6b0891451e0abf1fede8598deed8 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
 @@ -47,6 +47,8 @@ public abstract class DeviceAsWebcamFgService extends Service {
@@ -404,7 +3154,26 @@ index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..440dbfd8256c54a80e58a18f6caccab8
  
      static {
          System.loadLibrary("jni_deviceAsWebcam");
-@@ -100,8 +102,8 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -57,6 +59,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+     private Context mContext;
+     private WebcamController mWebcamController;
+     private boolean mServiceRunning = false;
++    private boolean mServiceStopping = false;
+ 
+     private NotificationCompat.Builder mNotificationBuilder;
+     private int mNotificationIcon;
+@@ -96,12 +99,19 @@ public abstract class DeviceAsWebcamFgService extends Service {
+             if (mContext == null) {
+                 Log.e(TAG, "Application context is null!, something is going to go wrong");
+             }
++            if (mServiceRunning || mServiceStopping) {
++                if (mServiceRunning && !mServiceStopping) {
++                    launchPreview();
++                }
++                return START_NOT_STICKY;
++            }
++            mServiceRunning = true;
+ 
              mWebcamController = getWebcamController(mContext);
              mWebcamController.registerServiceInstance(this);
  
@@ -414,7 +3183,34 @@ index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..440dbfd8256c54a80e58a18f6caccab8
              // If `setupServicesAndStartListening` fails, we don't want to start the foreground
              // service. However, Android expects a call to `startForegroundWithNotification` in
              // `onStartCommand` and throws an exception if it isn't called. So, if the foreground
-@@ -156,6 +158,24 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -110,12 +120,25 @@ public abstract class DeviceAsWebcamFgService extends Service {
+             // torn down once `onStartCommand` returns.
+             if (res != 0) {
+                 stopSelf();
++            } else {
++                launchPreview();
+             }
+-            mServiceRunning = true;
+             return START_NOT_STICKY;
+         }
+     }
+ 
++    private void launchPreview() {
++        Intent previewIntent = getPreviewActivityIntent(mContext);
++        previewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
++                | Intent.FLAG_ACTIVITY_CLEAR_TOP
++                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
++        try {
++            mContext.startActivity(previewIntent);
++        } catch (RuntimeException e) {
++            Log.e(TAG, "Unable to launch the webcam preview", e);
++        }
++    }
++
+     private String createNotificationChannel() {
+         NotificationChannel channel =
+                 new NotificationChannel(
+@@ -156,23 +179,52 @@ public abstract class DeviceAsWebcamFgService extends Service {
          return setupServicesAndStartListeningNative(ignoredNodes);
      }
  
@@ -438,9 +3234,105 @@ index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..440dbfd8256c54a80e58a18f6caccab8
 +
      @Override
      public void onDestroy() {
++        WebcamController webcamController;
          synchronized (mServiceLock) {
+-            if (!mServiceRunning) {
++            if (!mServiceRunning || mServiceStopping) {
+                 return;
+             }
++            mServiceStopping = true;
++        }
++
++        // Native teardown drains outstanding encoded buffers. Keep returnImage() available while
++        // it runs, and do not hold mServiceLock while encoder callbacks enter Java.
++        nativeOnDestroy();
++
++        synchronized (mServiceLock) {
++            webcamController = mWebcamController;
++            mWebcamController = null;
+             mServiceRunning = false;
+-            if (mWebcamController != null) {
+-                mWebcamController.onDestroy();
+-            }
+-            nativeOnDestroy();
++            mServiceStopping = false;
+             if (VERBOSE) {
+                 Log.v(TAG, "Destroyed fg service");
+             }
+             // Ensure that the service notification is removed.
+             NotificationManagerCompat.from(mContext).cancelAll();
+         }
++        if (webcamController != null) {
++            webcamController.onDestroy();
++        }
+         super.onDestroy();
+     }
+ 
+@@ -216,7 +268,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+ 
+     private void updateNotificationToNextIcon() {
+         synchronized (mServiceLock) {
+-            if (!mServiceRunning) {
++            if (!mServiceRunning || mServiceStopping) {
+                 return;
+             }
+ 
+@@ -246,7 +298,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+     @UsedByNative("DeviceAsWebcamNative.cpp")
+     private void startStreaming() {
+         synchronized (mServiceLock) {
+-            if (!mServiceRunning) {
++            if (!mServiceRunning || mServiceStopping) {
+                 Log.e(TAG, "startStreaming was called after Service was destroyed");
+                 return;
+             }
+@@ -257,11 +309,25 @@ public abstract class DeviceAsWebcamFgService extends Service {
+ 
+     @UsedByNative("DeviceAsWebcamNative.cpp")
+     private void stopService() {
++        WebcamController webcamController;
+         synchronized (mServiceLock) {
+-            if (!mServiceRunning) {
++            if (!mServiceRunning || mServiceStopping) {
+                 Log.e(TAG, "stopService was called after Service was destroyed");
+                 return;
+             }
++            webcamController = mWebcamController;
++        }
++
++        // A started service remains alive while the preview is bound. Ask the preview to finish
++        // first, without tearing down camera resources before native buffers have been drained.
++        if (webcamController != null) {
++            webcamController.onServiceStopRequested();
++        }
++
++        synchronized (mServiceLock) {
++            if (!mServiceRunning || mServiceStopping) {
++                return;
++            }
+             stopSelf();
+         }
+     }
+@@ -269,7 +335,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+     @UsedByNative("DeviceAsWebcamNative.cpp")
+     private void stopStreaming() {
+         synchronized (mServiceLock) {
+-            if (!mServiceRunning) {
++            if (!mServiceRunning || mServiceStopping) {
+                 Log.e(TAG, "stopStreaming was called after Service was destroyed");
+                 return;
+             }
+@@ -292,7 +358,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+     @UsedByNative("DeviceAsWebcamNative.cpp")
+     private void setStreamConfig(boolean mjpeg, int width, int height, int fps) {
+         synchronized (mServiceLock) {
+-            if (!mServiceRunning) {
++            if (!mServiceRunning || mServiceStopping) {
+                 Log.e(TAG, "setStreamConfig was called after Service was destroyed");
+                 return;
+             }
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
-index 15fd9f65d35857fb113eea9b6896f27fd9264c76..3f36401694626ff22bf8b1b1e17e6d2a34f4808e 100644
+index 15fd9f65d35857fb113eea9b6896f27fd9264c76..1fa3def03885bdb4706a0586083cbdc4b7b17591 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
 @@ -31,6 +31,8 @@ import com.android.deviceaswebcam.utils.IgnoredV4L2Nodes;
@@ -452,7 +3344,7 @@ index 15fd9f65d35857fb113eea9b6896f27fd9264c76..3f36401694626ff22bf8b1b1e17e6d2a
      private static final boolean VERBOSE = Log.isLoggable(TAG, Log.VERBOSE);
  
      static {
-@@ -40,18 +42,24 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
+@@ -40,18 +42,26 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
      @Override
      public final void onReceive(Context context, Intent intent) {
          final String action = intent.getAction();
@@ -470,7 +3362,9 @@ index 15fd9f65d35857fb113eea9b6896f27fd9264c76..3f36401694626ff22bf8b1b1e17e6d2a
              return;
          }
 +
-+        if (ACTION_PREPARE_UVC.equals(action)) {
++        if (ACTION_PREPARE_UVC.equals(action)
++                || Intent.ACTION_BOOT_COMPLETED.equals(action)
++                || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)) {
 +            startForegroundService(context);
 +            return;
 +        }
@@ -483,7 +3377,7 @@ index 15fd9f65d35857fb113eea9b6896f27fd9264c76..3f36401694626ff22bf8b1b1e17e6d2a
          if (UsbManager.ACTION_USB_STATE.equals(action) && uvcSelected) {
              String[] ignoredNodes = IgnoredV4L2Nodes.getIgnoredNodes(context);
              if (!DeviceAsWebcamFgService.shouldStartServiceNative(ignoredNodes)) {
-@@ -60,12 +68,16 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
+@@ -60,12 +70,16 @@ public abstract class DeviceAsWebcamReceiver extends BroadcastReceiver {
                  }
                  return;
              }
@@ -506,3 +3400,50 @@ index 15fd9f65d35857fb113eea9b6896f27fd9264c76..3f36401694626ff22bf8b1b1e17e6d2a
          }
      }
  
+diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
+index aaf540b212f0e73d929f1dd543579aec07d9765a..4573258a17a05a0388b1ca2a10370b80e5a86aec 100644
+--- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
++++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
+@@ -46,8 +46,8 @@ public abstract class WebcamController {
+ 
+     /**
+      * Method to be used to send camera frames from Java implementation to the host. This method
+-     * (optionally) rotates the frames 180 degrees, encodes the frame to the format expected by the
+-     * host, and queues the encoded frames to be sent to the host.
++     * rotates the frames to the requested orientation, encodes the frame to the format expected by
++     * the host, and queues the encoded frames to be sent to the host.
+      *
+      * <p>The passed HardwareBuffer must remain valid until {@link #onImageReturned} is called with
+      * the corresponding token. For example, if {@code image} is fetched from {@link
+@@ -63,14 +63,14 @@ public abstract class WebcamController {
+      *     true} is returned.
+      */
+     public final boolean queueImageToHost(
+-            HardwareBuffer image, long token, boolean rotate180Degrees) {
++            HardwareBuffer image, long token, int rotationDegrees) {
+         DeviceAsWebcamFgService service = mServiceRef.get();
+         if (service == null) {
+             Log.e(TAG, "queueImageToHost called but service has already been garbage collected?");
+             return false;
+         }
+ 
+-        return service.nativeEncodeImage(image, token, rotate180Degrees ? 180 : 0) == 0;
++        return service.nativeEncodeImage(image, token, rotationDegrees) == 0;
+     }
+ 
+     /**
+@@ -89,6 +89,14 @@ public abstract class WebcamController {
+      */
+     public abstract void onImageReturned(long token);
+ 
++    /**
++     * Called when the native UVC device can no longer continue and the service must stop.
++     *
++     * <p>This should close bound user-facing views so they release the service. Camera resources
++     * remain alive until {@link #onDestroy}, after native buffers have been drained.
++     */
++    public abstract void onServiceStopRequested();
++
+     /**
+      * Called when the service is being destroyed. This typically happens when the host has been
+      * disconnected, or the Android system is killing the service. This may happen even if {@link

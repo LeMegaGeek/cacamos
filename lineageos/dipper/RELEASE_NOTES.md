@@ -2,17 +2,61 @@
 
 Xiaomi Mi 8 (`dipper`) LineageOS integration for standard USB webcam mode.
 
-## Unreleased
+## 0.2.0 - R13
 
-- Captures the current LineageOS working tree as a reproducible patch series.
-- Defaults the MI8 to UVC-only after user unlock, without requiring ADB in the
-  active USB composition.
-- Includes the kernel and DeviceAsWebcam negotiation changes that make Linux
-  enumerate the phone and let OBS receive a continuous stream.
-- Queues the first camera frame before completing `STREAMON`, avoiding OBS's
-  first-frame timeout.
-- Keeps the current visual defects documented: 90-degree rotation, incorrect
-  colors and a green band.
+- Adds the verified R13 OTA with UVC-only cable policy, persistent
+  ADB over Wi-Fi, direct-boot webcam startup and automatic preview launch.
+- Keeps the UVC listener and gadget fd alive across a physical cable
+  disconnect, tears down only the active stream and restores control-event
+  polling for the next host enumeration.
+- Releases the bound preview before stopping the foreground service when the
+  gadget node is actually removed, so Android can complete native teardown and
+  restart cleanly.
+- Corrects the front-camera landscape transform from sensor orientation plus
+  device orientation to sensor orientation minus device orientation. Portrait
+  output remains unchanged and the phone controls use the matching physical
+  transform.
+- Uses a 320-request UVC pool with 64 initial empty requests, retaining enough
+  queue depth for stable isochronous transfers without adding the former
+  20-millisecond empty-packet delay.
+- Retains each completed V4L2 frame on its final USB request and returns it to
+  Android only from the USB completion callback.
+- Enforces the negotiated 15 FPS cadence at the ImageReader boundary when the
+  MI8 legacy camera HAL continues producing 30 FPS.
+- Bounds camera, capture-session and encoded-buffer waits, rejects callbacks
+  from obsolete stream generations and returns failed buffers to their pool.
+- Removes a native shutdown lock inversion, makes listener state atomic,
+  orders V4L2 buffer cleanup before fd closure and suppresses duplicate camera
+  stream stops.
+- Makes V4L2-node monitoring nonblocking and releases the delayed USB
+  `SET_INTERFACE` request when native stream initialization fails.
+- Stops the unused ADB FunctionFS USB transport in UVC-only mode without
+  stopping TCP/TLS ADB over Wi-Fi.
+- Converts the MI8 Android 4:2:0 buffers using their real dimensions and plane
+  strides, restores output strides before letterboxing and contains libjpeg
+  failures.
+- Separates stream and UI rotation formulas for front and rear cameras while
+  keeping the accepted fixed 16:9 portrait bars.
+- Advertises only the MI8 rates supported by the audited camera pipeline:
+  15 and 30 FPS. It no longer claims 2, 10, 50 or 60 FPS.
+- Adds mandatory reproducible-patch, source, compiled-artifact, OTA-signature
+  and raw-MJPEG gates.
+- Builds the signed R13 release with incremental `1785181771` and SHA-256
+  `efed9f1141514d1835bd8e48e6a5d7d04fa97fb0ab97083fd8df194f42c4a7a8`.
+
+R13 physically validates all advertised MJPEG and YUYV modes at 15 and 30 FPS,
+including 18,000 intact 720p frames over ten minutes. It starts automatically
+without a lock screen, restores wireless ADB, fixes front-camera landscape
+orientation, retains correct colors and survives repeated USB remove/add
+cycles without restarting the phone or webcam process.
+
+On OBS Studio 32.2.0 for Linux, configure the source with the direct capture
+node, such as `/dev/video0`. OBS then associates udev remove/add events with
+the source when USB returns. A `/dev/v4l/by-id/...` source path does not trigger
+this OBS reconnection path.
+
+Known limitation: after a cable disconnect/reconnect, OBS can later stop
+receiving frames. Restarting OBS restores capture.
 
 ## 0.1.9
 
@@ -31,13 +75,13 @@ Xiaomi Mi 8 (`dipper`) LineageOS integration for standard USB webcam mode.
   lets the foreground service retry briefly while the UVC `/dev/videoX` node is
   being created. This avoids the Linux host probing UVC before Android is
   listening for UVC setup events.
-- Enables MI8 kernel UVC pieces in the device-specific kernel config fragment:
-  `CONFIG_MEDIA_USB_SUPPORT=y`, `CONFIG_USB_VIDEO_CLASS=y` and
-  `CONFIG_USB_CONFIGFS_F_UVC=y`.
+- Enables the MI8 UVC gadget in the device-specific kernel config fragment with
+  `CONFIG_USB_CONFIGFS_F_UVC=y`. The host-side `CONFIG_USB_VIDEO_CLASS` driver
+  is intentionally not required.
 - Adds source-tree install and verification scripts.
 - Adds a conservative LineageOS build wrapper:
-  `tools/build-lineage-gentle.sh`. It checks available memory/swap, uses one
-  build job, reserves two CPU cores through `taskset` when available, and runs
+  `tools/build-lineage-gentle.sh`. It checks available memory/swap, uses two
+  build jobs, reserves two CPU cores through `taskset` when available, and runs
   at low CPU/IO priority for Denis' desktop.
 - Adds a runtime memory watchdog to the MI8 build wrapper. If available memory
   drops below the configured threshold, the wrapper stops the build instead of

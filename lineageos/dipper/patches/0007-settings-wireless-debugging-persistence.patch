@@ -1,0 +1,54 @@
+diff --git a/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java b/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java
+index d4e4fc78a12eb3e21202f0716b6dc32a92784fc2..69e5de7a335d725012a00aaf822a40db27bed2d5 100644
+--- a/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java
++++ b/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java
+@@ -120,9 +120,15 @@ public class WirelessDebuggingEnabler implements SwitchWidgetController.OnSwitch
+                 : AdbPreferenceController.ADB_SETTING_OFF);
+     }
+ 
++    boolean shouldKeepAdbWifiEnabledWithoutNetwork() {
++        return mContext.getResources().getBoolean(
++                com.android.internal.R.bool.config_adbWifiAutoEnable);
++    }
++
+     @Override
+     public boolean onSwitchToggled(boolean isChecked) {
+-        if (isChecked && !WirelessDebuggingPreferenceController.isWifiConnected(mContext)) {
++        if (isChecked && !shouldKeepAdbWifiEnabledWithoutNetwork()
++                && !WirelessDebuggingPreferenceController.isWifiConnected(mContext)) {
+             // No connected Wi-Fi network. Reset the switch to off.
+             Toast.makeText(mContext, com.android.settingslib.R.string.adb_wireless_no_network_msg,
+                             Toast.LENGTH_LONG)
+diff --git a/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java b/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java
+index 14c0bc72ff16e7b84bce608e61b8e6a946028558..d460942a5eeee7a80007dd624164ade35eee23cb 100644
+--- a/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java
++++ b/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java
+@@ -18,6 +18,7 @@ package com.android.settings.development;
+ 
+ import static com.google.common.truth.Truth.assertThat;
+ 
++import static org.mockito.Mockito.doReturn;
+ import static org.mockito.Mockito.spy;
+ import static org.mockito.Mockito.verify;
+ 
+@@ -156,6 +157,20 @@ public class WirelessDebuggingEnablerTest {
+                 Global.ADB_WIFI_ENABLED, -1)).isEqualTo(0);
+     }
+ 
++    @Test
++    public void onSwitchToggled_true_cacamOsWithoutWifi_shouldKeepAdbWifiEnabled() {
++        ShadowWirelessDebuggingPreferenceController.setIsWifiConnected(false);
++        doReturn(true).when(mWirelessDebuggingEnabler)
++                .shouldKeepAdbWifiEnabledWithoutNetwork();
++        Global.putInt(mContext.getContentResolver(),
++                Global.ADB_WIFI_ENABLED, 0 /* setting disabled */);
++
++        mWirelessDebuggingEnabler.onSwitchToggled(true);
++
++        assertThat(Global.getInt(mContext.getContentResolver(),
++                Global.ADB_WIFI_ENABLED, -1)).isEqualTo(1);
++    }
++
+     @Test
+     public void onSwitchToggled_false_wifiConnected_shouldSetAdbWifiEnabledFalse() {
+         ShadowWirelessDebuggingPreferenceController.setIsWifiConnected(true);
