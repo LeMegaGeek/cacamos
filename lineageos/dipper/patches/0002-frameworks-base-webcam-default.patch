@@ -1,5 +1,5 @@
 diff --git a/frameworks/base/core/res/AndroidManifest.xml b/frameworks/base/core/res/AndroidManifest.xml
-index 81c2af8c8d563243bb1cfbd12a6bd60a6f6ca290..efad9f28c309d315c0057e4def9417968d92d782 100644
+index 81c2af8c8d56..efad9f28c309 100644
 --- a/frameworks/base/core/res/AndroidManifest.xml
 +++ b/frameworks/base/core/res/AndroidManifest.xml
 @@ -26,6 +26,8 @@
@@ -12,7 +12,7 @@ index 81c2af8c8d563243bb1cfbd12a6bd60a6f6ca290..efad9f28c309d315c0057e4def941796
      <protected-broadcast android:name="android.intent.action.SCREEN_ON" />
      <protected-broadcast android:name="android.intent.action.USER_PRESENT" />
 diff --git a/frameworks/base/core/res/res/values/config.xml b/frameworks/base/core/res/res/values/config.xml
-index 18fd4447c3838b881e3eea03679ef55a16caf778..1ffb0ec81cf7a7ab8ae1fbe74ad5f5922e51d136 100644
+index 18fd4447c383..1ffb0ec81cf7 100644
 --- a/frameworks/base/core/res/res/values/config.xml
 +++ b/frameworks/base/core/res/res/values/config.xml
 @@ -529,6 +529,12 @@
@@ -29,7 +29,7 @@ index 18fd4447c3838b881e3eea03679ef55a16caf778..1ffb0ec81cf7a7ab8ae1fbe74ad5f592
      <bool name="config_useAttentionLight">false</bool>
  
 diff --git a/frameworks/base/core/res/res/values/symbols.xml b/frameworks/base/core/res/res/values/symbols.xml
-index f47032321f01ff98b83663a34dc561be0ae9d764..6fdc21855482050bbe484bfcdf3a21c2cc07e341 100644
+index f47032321f01..6fdc21855482 100644
 --- a/frameworks/base/core/res/res/values/symbols.xml
 +++ b/frameworks/base/core/res/res/values/symbols.xml
 @@ -2045,6 +2045,8 @@
@@ -42,7 +42,7 @@ index f47032321f01ff98b83663a34dc561be0ae9d764..6fdc21855482050bbe484bfcdf3a21c2
    <java-symbol type="bool" name="config_allowAutoBrightnessWhileDozing" />
    <java-symbol type="bool" name="config_allowTheaterModeWakeFromUnplug" />
 diff --git a/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java b/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
-index a73a991bc6a64dbeb5a2e23a25e28bf6a4911b03..a380f17bc9e9cae8f4508ed230a0b77d68e71209 100644
+index a73a991bc6a6..a380f17bc9e9 100644
 --- a/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
 +++ b/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
 @@ -145,6 +145,7 @@ public class AdbDebuggingManager {
@@ -281,7 +281,7 @@ index a73a991bc6a64dbeb5a2e23a25e28bf6a4911b03..a380f17bc9e9cae8f4508ed230a0b77d
              if (mAdbKeyStore.isTrustedNetwork(bssid)) {
                  return true;
 diff --git a/frameworks/base/services/core/java/com/android/server/adb/AdbService.java b/frameworks/base/services/core/java/com/android/server/adb/AdbService.java
-index 55d8dba69626bc8976af1fc598fddc71591122c1..2d5ec71293ecdcb0d4fabe4212e0f366a5387292 100644
+index 55d8dba69626..2d5ec71293ec 100644
 --- a/frameworks/base/services/core/java/com/android/server/adb/AdbService.java
 +++ b/frameworks/base/services/core/java/com/android/server/adb/AdbService.java
 @@ -19,9 +19,11 @@ import static com.android.internal.util.function.pooled.PooledLambda.obtainMessa
@@ -390,19 +390,18 @@ index 55d8dba69626bc8976af1fc598fddc71591122c1..2d5ec71293ecdcb0d4fabe4212e0f366
              mDebuggingManager.setAdbEnabled(mIsAdbUsbEnabled, AdbTransportType.USB);
              mDebuggingManager.setAdbEnabled(mIsAdbWifiEnabled, AdbTransportType.WIFI);
 diff --git a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
-index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a278f27b14e 100644
+index 1f3ce01cad4a..8d11477aba17 100644
 --- a/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
 +++ b/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java
-@@ -642,6 +642,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -642,6 +642,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
          private final Context mContext;
          private final UsbAlsaManager mUsbAlsaManager;
          private final UsbPermissionManager mPermissionManager;
 +        private final boolean mDefaultToUvc;
-+        private boolean mDefaultUvcFailed;
          private NotificationManager mNotificationManager;
  
          /**
-@@ -694,6 +696,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -694,6 +695,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              mUsbAlsaManager = alsaManager;
              mPermissionManager = permissionManager;
              mContentResolver = context.getContentResolver();
@@ -411,7 +410,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
  
              mCurrentUser = ActivityManager.getCurrentUser();
              mScreenLocked = true;
-@@ -1181,6 +1185,29 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1181,6 +1184,22 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              setEnabledFunctions(mScreenUnlockedFunctions, false, operationId);
          }
  
@@ -420,14 +419,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
 +        }
 +
 +        protected boolean shouldDefaultToUvc() {
-+            return isDefaultToUvcConfigured() && !mDefaultUvcFailed;
-+        }
-+
-+        protected void markDefaultUvcFailed() {
-+            if (isDefaultToUvcConfigured()) {
-+                mDefaultUvcFailed = true;
-+                Slog.e(TAG, "CaCamOS UVC failed; keeping the recoverable USB configuration");
-+            }
++            return isDefaultToUvcConfigured();
 +        }
 +
 +        protected long getDefaultFunctions() {
@@ -441,20 +433,23 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
          private static class AdbTransport extends IAdbTransport.Stub {
              private final UsbHandler mHandler;
  
-@@ -1205,6 +1232,12 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1202,9 +1221,15 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+          * charging are accounted for.
+          */
+         long getAppliedFunctions(long functions) {
++            if (isDefaultToUvcConfigured()) {
++                return UsbManager.FUNCTION_UVC;
++            }
              if (functions == UsbManager.FUNCTION_NONE) {
                  return getChargingFunctions();
              }
 +            if ((functions & UsbManager.FUNCTION_UVC) != 0) {
 +                return UsbManager.FUNCTION_UVC;
 +            }
-+            if (isDefaultToUvcConfigured()) {
-+                return functions & ~UsbManager.FUNCTION_ADB;
-+            }
              if (isAdbEnabled()) {
                  return functions | UsbManager.FUNCTION_ADB;
              }
-@@ -1241,7 +1274,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1241,7 +1266,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                                      && mScreenUnlockedFunctions != UsbManager.FUNCTION_NONE) {
                                  setScreenUnlockedFunctions(operationId);
                              } else {
@@ -463,18 +458,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
                              }
                          }
                          updateUsbFunctions();
-@@ -1367,6 +1400,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
-                 case MSG_SET_CURRENT_FUNCTIONS:
-                     long functions = (Long) msg.obj;
-                     operationId = (int) msg.arg1;
-+                    if ((functions & UsbManager.FUNCTION_UVC) != 0) {
-+                        // A manual Webcam selection is also an explicit retry.
-+                        mDefaultUvcFailed = false;
-+                    }
-                     setEnabledFunctions(functions, false, operationId);
-                     break;
-                 case MSG_SET_SCREEN_UNLOCKED_FUNCTIONS:
-@@ -1383,7 +1420,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1383,7 +1408,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                          // If the screen is unlocked, also set current functions.
                          setScreenUnlockedFunctions(operationId);
                      } else {
@@ -483,7 +467,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
                      }
                      break;
                  case MSG_UPDATE_SCREEN_LOCK:
-@@ -1400,7 +1437,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1400,7 +1425,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                      }
                      if (mScreenLocked) {
                          if (!mConnected) {
@@ -492,7 +476,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
                          }
                      } else {
                          if (mScreenUnlockedFunctions != UsbManager.FUNCTION_NONE
-@@ -1462,7 +1499,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1462,7 +1487,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                                      mSettings.getString(String.format(Locale.ENGLISH,
                                              UNLOCKED_CONFIG_PREF, mCurrentUser), ""));
                          }
@@ -501,7 +485,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
                      }
                      break;
                  }
-@@ -1535,7 +1572,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1535,7 +1560,7 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                          && mScreenUnlockedFunctions != UsbManager.FUNCTION_NONE) {
                      setScreenUnlockedFunctions(operationId);
                  } else {
@@ -510,17 +494,17 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
                  }
                  if (!Flags.checkUserActionUnlocked()) {
                      attachAccessoryAfterBoot();
-@@ -1771,6 +1808,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1771,6 +1796,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
          }
  
          protected long getChargingFunctions() {
 +            if (isDefaultToUvcConfigured()) {
-+                return UsbManager.FUNCTION_NONE;
++                return UsbManager.FUNCTION_UVC;
 +            }
              // if ADB is enabled, reset functions to ADB
              // else enable MTP as usual.
              if (isAdbEnabled()) {
-@@ -1784,6 +1824,19 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -1784,6 +1812,19 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              SystemProperties.set(prop, val);
          }
  
@@ -540,7 +524,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
          protected String getSystemProperty(String prop, String def) {
              return SystemProperties.get(prop, def);
          }
-@@ -2077,6 +2130,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2077,6 +2118,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
  
          private void setUsbConfig(String config) {
              if (DEBUG) Slog.d(TAG, "setUsbConfig(" + config + ")");
@@ -550,65 +534,42 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
              /**
               * set the new configuration
               * we always set it due to b/23631400, where adbd was getting killed
-@@ -2111,6 +2167,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
-                 return;
-             }
- 
-+            if ((usbFunctions & UsbManager.FUNCTION_UVC) != 0) {
-+                markDefaultUvcFailed();
-+            }
-+
-             /**
-              * Didn't work.  Try to revert changes.
-              * We always reapply the policy in case certain constraints changed such as
-@@ -2158,6 +2218,12 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2158,6 +2202,12 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              if (functions == null) {
                  functions = "";
              }
-+            if (containsFunction(functions, UsbManager.USB_FUNCTION_UVC)) {
++            if (isDefaultToUvcConfigured()) {
 +                return UsbManager.USB_FUNCTION_UVC;
 +            }
-+            if (isDefaultToUvcConfigured()) {
-+                return removeFunction(functions, UsbManager.USB_FUNCTION_ADB);
++            if (containsFunction(functions, UsbManager.USB_FUNCTION_UVC)) {
++                return UsbManager.USB_FUNCTION_UVC;
 +            }
              if (isAdbEnabled()) {
                  functions = addFunction(functions, UsbManager.USB_FUNCTION_ADB);
              } else {
-@@ -2414,6 +2480,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2414,6 +2464,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                      operationId = sUsbOperationCount.incrementAndGet();
                      Slog.e(TAG, "Set functions timed out! no reply from usb hal"
                                  + " ,operationId:" + operationId);
 +                    if ((mCurrentFunctions & UsbManager.FUNCTION_UVC) != 0) {
-+                        markDefaultUvcFailed();
 +                        setEnabledFunctions(UsbManager.FUNCTION_NONE, false, operationId);
 +                        break;
 +                    }
                      if (msg.arg1 != 1) {
                          // Set this since default function may be selected from Developer options
                          setEnabledFunctions(mScreenUnlockedFunctions, false, operationId);
-@@ -2439,6 +2510,11 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2439,6 +2493,10 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
                       * Dont force to default when the configuration is already set to default.
                       */
                      operationId = sUsbOperationCount.incrementAndGet();
 +                    if ((mCurrentFunctions & UsbManager.FUNCTION_UVC) != 0) {
-+                        markDefaultUvcFailed();
 +                        setEnabledFunctions(UsbManager.FUNCTION_NONE, false, operationId);
 +                        break;
 +                    }
                      if (msg.arg1 != 1) {
                          if (mCurrentFunctions == UsbManager.FUNCTION_ACCESSORY) {
                              notifyAccessoryModeExit(operationId);
-@@ -2531,6 +2607,9 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
-             if (status == Status.SUCCESS) {
-                 mCurrentFunctionsApplied = true;
-             } else if (!mChargingFunctions) {
-+                if ((mFunctions & UsbManager.FUNCTION_UVC) != 0) {
-+                    markDefaultUvcFailed();
-+                }
-                 Slog.e(TAG, "Setting default fuctions");
-                 sendEmptyMessage(MSG_SET_CHARGING_FUNCTIONS);
-             }
-@@ -2556,6 +2635,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
+@@ -2556,6 +2614,8 @@ public class UsbDeviceManager implements ActivityTaskManagerInternal.ScreenObser
              removeMessages(MSG_SET_FUNCTIONS_TIMEOUT);
              removeMessages(MSG_SET_CHARGING_FUNCTIONS);
  
@@ -618,7 +579,7 @@ index 1f3ce01cad4a3fcccfdabe9fe835130a3b3f2f11..b8411449d299f23a6f2d99ca93a59a27
                  if (mUsbGadgetHal == null) {
                      Slog.e(TAG, "setUsbConfig mUsbGadgetHal is null");
 diff --git a/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java b/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java
-index c2d0f7c05b9152029ac13157ec5ad2446970fb89..9f1a135e4b1870d3484843696e752c3f3d960662 100644
+index c2d0f7c05b91..c9277b7e0321 100644
 --- a/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java
 +++ b/frameworks/base/tests/UsbTests/src/com/android/server/usb/UsbHandlerTest.java
 @@ -96,6 +96,7 @@ public class UsbHandlerTest {
@@ -629,7 +590,7 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..9f1a135e4b1870d3484843696e752c3f
          Intent mBroadcastedIntent;
  
          MockUsbHandler(Looper looper, Context context, UsbDeviceManager deviceManager,
-@@ -135,6 +136,15 @@ public class UsbHandlerTest {
+@@ -135,6 +136,11 @@ public class UsbHandlerTest {
              return mIsUsbTransferAllowed;
          }
  
@@ -638,14 +599,10 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..9f1a135e4b1870d3484843696e752c3f
 +            return mDefaultToUvc;
 +        }
 +
-+        void failDefaultUvc() {
-+            markDefaultUvcFailed();
-+        }
-+
          @Override
          protected SharedPreferences getPinnedSharedPrefs(Context context) {
              return mSharedPreferences;
-@@ -248,6 +258,39 @@ public class UsbHandlerTest {
+@@ -248,6 +254,42 @@ public class UsbHandlerTest {
          assertEquals(UsbManager.FUNCTION_NCM, mUsbHandler.getEnabledFunctions() & rndisPlusNcm);
      }
  
@@ -672,20 +629,23 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..9f1a135e4b1870d3484843696e752c3f
 +
 +    @SmallTest
 +    @Test
-+    public void getAppliedFunctions_cacamOsNeverAddsUsbAdb() {
++    public void getAppliedFunctions_cacamOsAlwaysUsesUvcAlone() {
 +        mUsbHandler.mDefaultToUvc = true;
 +        when(mAdbManagerInternal.isAdbEnabled(eq(AdbTransportType.USB))).thenReturn(true);
 +
-+        assertEquals(UsbManager.FUNCTION_NONE,
++        assertEquals(UsbManager.FUNCTION_UVC,
 +                mUsbHandler.getAppliedFunctions(UsbManager.FUNCTION_NONE));
-+        assertEquals(UsbManager.FUNCTION_MTP,
++        assertEquals(UsbManager.FUNCTION_UVC,
 +                mUsbHandler.getAppliedFunctions(UsbManager.FUNCTION_MTP));
++        assertEquals(UsbManager.FUNCTION_UVC,
++                mUsbHandler.getAppliedFunctions(
++                        UsbManager.FUNCTION_RNDIS | UsbManager.FUNCTION_ADB));
 +    }
 +
      @SmallTest
      @Test
      public void enableAdb() {
-@@ -293,6 +336,29 @@ public class UsbHandlerTest {
+@@ -293,6 +335,16 @@ public class UsbHandlerTest {
          assertEquals(mUsbHandler.getEnabledFunctions(), UsbManager.FUNCTION_NONE);
      }
  
@@ -699,23 +659,10 @@ index c2d0f7c05b9152029ac13157ec5ad2446970fb89..9f1a135e4b1870d3484843696e752c3f
 +        assertEquals(UsbManager.FUNCTION_UVC, mUsbHandler.getEnabledFunctions());
 +    }
 +
-+    @SmallTest
-+    @Test
-+    public void failedDefaultUvcKeepsRecoverableUsbMode() {
-+        mUsbHandler.mDefaultToUvc = true;
-+        sendBootCompleteMessages(mUsbHandler);
-+        assertEquals(UsbManager.FUNCTION_UVC, mUsbHandler.getEnabledFunctions());
-+
-+        mUsbHandler.failDefaultUvc();
-+        mUsbHandler.handleMessage(mUsbHandler.obtainMessage(MSG_UPDATE_STATE, 0, 0));
-+
-+        assertEquals(UsbManager.FUNCTION_NONE, mUsbHandler.getEnabledFunctions());
-+    }
-+
      @SmallTest
      @Test
      public void userSwitchedDisablesMtp() {
-@@ -332,6 +398,21 @@ public class UsbHandlerTest {
+@@ -332,6 +384,21 @@ public class UsbHandlerTest {
          assertEquals(mUsbHandler.getEnabledFunctions(), UsbManager.FUNCTION_NONE);
      }
  

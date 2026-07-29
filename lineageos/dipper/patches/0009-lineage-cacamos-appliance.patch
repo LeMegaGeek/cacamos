@@ -1,0 +1,146 @@
+diff --git a/vendor/lineage/config/common.mk b/vendor/lineage/config/common.mk
+index 5265427ba591d3cc37a63da54e6945716f3ca9aa..c6338091096e477e9e79bd78abe67bed044591e1 100644
+--- a/vendor/lineage/config/common.mk
++++ b/vendor/lineage/config/common.mk
+@@ -127,6 +127,7 @@ PRODUCT_PACKAGES += \
+     bootanimation-dark.zip
+ 
+ # Lineage packages
++ifneq ($(CACAMOS_APPLIANCE),true)
+ ifeq ($(PRODUCT_IS_ATV),)
+ PRODUCT_PACKAGES += \
+     ExactCalculator \
+@@ -140,11 +141,14 @@ PRODUCT_PACKAGES += \
+ endif
+ 
+ PRODUCT_PACKAGES += \
+-    LineageSettingsProvider \
+     Updater
+ 
+ PRODUCT_COPY_FILES += \
+     vendor/lineage/prebuilt/common/etc/init/init.lineage-updater.rc:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/init/init.lineage-updater.rc
++endif
++
++PRODUCT_PACKAGES += \
++    LineageSettingsProvider
+ 
+ # Config
+ PRODUCT_PACKAGES += \
+@@ -152,6 +156,7 @@ PRODUCT_PACKAGES += \
+     SimpleSettingsConfig
+ 
+ # Extra tools in Lineage
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     bash \
+     curl \
+@@ -160,6 +165,7 @@ PRODUCT_PACKAGES += \
+     nano \
+     setcap \
+     vim
++endif
+ 
+ PRODUCT_PACKAGES += \
+     nano_recovery
+diff --git a/vendor/lineage/config/common_full_phone.mk b/vendor/lineage/config/common_full_phone.mk
+index 771cc9c0b8d5530ff3180d05b5b1592fc5f11ea0..37972ed5d90f183ecfa75a994a7ac5552c50b372 100644
+--- a/vendor/lineage/config/common_full_phone.mk
++++ b/vendor/lineage/config/common_full_phone.mk
+@@ -5,4 +5,6 @@ $(call inherit-product, vendor/lineage/config/common_mobile_full.mk)
+ PRODUCT_PRODUCT_PROPERTIES += \
+     ro.support_one_handed_mode?=true
+ 
++ifneq ($(CACAMOS_APPLIANCE),true)
+ $(call inherit-product, vendor/lineage/config/telephony.mk)
++endif
+diff --git a/vendor/lineage/config/common_mobile.mk b/vendor/lineage/config/common_mobile.mk
+index 08619d9d64e79340d72dcff40eedf23acf17cf2d..2bd66a309928195f5f60fea4ecc538eba358e91e 100644
+--- a/vendor/lineage/config/common_mobile.mk
++++ b/vendor/lineage/config/common_mobile.mk
+@@ -14,6 +14,10 @@ PRODUCT_PRODUCT_PROPERTIES += \
+     ro.config.alarm_alert=Hassium.ogg
+ 
+ # Apps
++ifeq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
++    LatinIME
++else
+ PRODUCT_PACKAGES += \
+     AvatarPicker \
+     Backgrounds \
+@@ -36,6 +40,7 @@ endif
+ 
+ PRODUCT_PACKAGES += \
+     TrebuchetOverlay
++endif
+ 
+ # Charger
+ PRODUCT_PACKAGES += \
+@@ -48,6 +53,7 @@ PRODUCT_PACKAGES += \
+ endif
+ 
+ # Customizations
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     IconPackCircularAndroidOverlay \
+     IconPackCircularLauncherOverlay \
+@@ -80,6 +86,7 @@ PRODUCT_PACKAGES += \
+     IconShapeTaperedRectOverlay \
+     IconShapeTeardropOverlay \
+     IconShapeVesselOverlay
++endif
+ 
+ # Legal
+ PRODUCT_SYSTEM_PROPERTIES += \
+@@ -89,9 +96,11 @@ PRODUCT_SYSTEM_PROPERTIES += \
+ PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
+     media.recorder.show_manufacturer_and_model=true
+ 
+-# SystemUI plugins
++# SystemUI plugins are omitted from the dedicated webcam appliance.
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     QuickAccessWallet
++endif
+ 
+ # TextClassifier
+ PRODUCT_PACKAGES += \
+@@ -106,8 +115,10 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+     system/etc/textclassifier/textclassifier.en.model \
+     system/etc/textclassifier/textclassifier.universal.model
+ 
+-# Themes
++# Theme selection is not exposed by the dedicated webcam appliance.
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     LineageBlackTheme \
+     ThemePicker \
+     ThemesStub
++endif
+diff --git a/vendor/lineage/config/common_mobile_full.mk b/vendor/lineage/config/common_mobile_full.mk
+index 22b1acf2f9d30123a9c21a86150bec980c2af4ae..e3392d1e81cb5f695c2926cbca6f61042ddf9c4f 100644
+--- a/vendor/lineage/config/common_mobile_full.mk
++++ b/vendor/lineage/config/common_mobile_full.mk
+@@ -8,6 +8,7 @@ $(call inherit-product-if-exists, external/google-fonts/lato/fonts.mk)
+ $(call inherit-product-if-exists, external/google-fonts/rubik/fonts.mk)
+ 
+ # Apps
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     Camelot \
+     Etar \
+@@ -25,11 +26,14 @@ ifneq ($(TARGET_EXCLUDES_AUDIOFX),true)
+ PRODUCT_PACKAGES += \
+     AudioFX
+ endif
++endif
+ 
+ # Extra cmdline tools
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     unrar \
+     zstd
++endif
+ 
+ # Fonts
+ PRODUCT_PACKAGES += \

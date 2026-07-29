@@ -1,0 +1,9 @@
+assert(getprop("ro.product.device") == "dipper" ||
+       getprop("ro.build.product") == "dipper" ||
+       abort("This package is only for the Xiaomi MI 8 (dipper)."));
+ui_print("Installing CaCamOS R19 UVC kernel...");
+show_progress(0.900000, 5);
+assert(package_extract_file("boot.img", "/dev/block/bootdevice/by-name/boot"));
+assert(package_extract_file("vbmeta.img", "/dev/block/bootdevice/by-name/vbmeta"));
+set_progress(1.000000);
+ui_print("CaCamOS R19 kernel installed.");

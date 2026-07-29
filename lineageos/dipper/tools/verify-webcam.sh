@@ -67,7 +67,11 @@ printf 'adb_target=%s\n' "$adb_serial"
 
 device="$(adb_shell getprop ro.product.device)"
 model="$(adb_shell getprop ro.product.model)"
+brand="$(adb_shell getprop ro.product.brand)"
 lineage="$(adb_shell getprop ro.lineage.version)"
+cacamos_appliance="$(adb_shell getprop ro.cacamos.appliance)"
+cacamos_version="$(adb_shell getprop ro.cacamos.version)"
+setupwizard_mode="$(adb_shell getprop ro.setupwizard.mode)"
 build_fingerprint="$(adb_shell getprop ro.build.fingerprint)"
 build_incremental="$(adb_shell getprop ro.build.version.incremental)"
 boot_completed="$(adb_shell getprop sys.boot_completed)"
@@ -77,6 +81,14 @@ uptime="${uptime_raw%% *}"
 usb_config="$(adb_shell getprop sys.usb.config)"
 persist_usb_config="$(adb_shell getprop persist.sys.usb.config)"
 adb_wifi_enabled="$(adb_shell settings get global adb_wifi_enabled)"
+adb_enabled="$(adb_shell settings get global adb_enabled)"
+adb_tcp_port="$(adb_shell getprop service.adb.tcp.port)"
+persist_adb_tcp_port="$(adb_shell getprop persist.adb.tcp.port)"
+device_provisioned="$(adb_shell settings get global device_provisioned)"
+user_setup_complete="$(adb_shell settings get secure user_setup_complete)"
+development_settings_enabled="$(
+    adb_shell settings get global development_settings_enabled
+)"
 # SELinux intentionally hides the UVC and adbd properties from shell. Verify
 # their framework policy and the applied HAL state instead.
 uvc_default_enabled="$(
@@ -86,19 +98,28 @@ adb_wifi_auto_enabled="$(
     adb_shell cmd overlay lookup android android:bool/config_adbWifiAutoEnable
 )"
 webcam_package="$(adb_shell pm list packages com.android.DeviceAsWebcam)"
+system_packages="$(adb_shell pm list packages -s)"
 webcam_pid="$(adb_shell pidof com.android.DeviceAsWebcam)"
 lockscreen_disabled="$(adb_shell locksettings get-disabled)"
 trust_dump="$(adb_shell dumpsys trust)"
 usb_dump="$(adb_shell dumpsys usb)"
 activity_dump="$(adb_shell dumpsys activity activities)"
 policy_dump="$(adb_shell dumpsys window policy)"
+home_activity="$(
+    adb_shell cmd package resolve-activity --brief \
+        -a android.intent.action.MAIN -c android.intent.category.HOME
+)"
 crash_dump="$(adb_exec logcat -b crash -d -v brief 2>/dev/null | tr -d '\r')"
 kernel_config="$(adb_shell 'zcat /proc/config.gz 2>/dev/null')"
 
 printf '\nAndroid\n'
 printf 'model=%s\n' "$model"
+printf 'brand=%s\n' "$brand"
 printf 'device=%s\n' "$device"
 printf 'lineage=%s\n' "$lineage"
+printf 'cacamos_appliance=%s\n' "$cacamos_appliance"
+printf 'cacamos_version=%s\n' "$cacamos_version"
+printf 'setupwizard_mode=%s\n' "$setupwizard_mode"
 printf 'fingerprint=%s\n' "$build_fingerprint"
 printf 'build_incremental=%s\n' "$build_incremental"
 printf 'boot_completed=%s\n' "$boot_completed"
@@ -108,12 +129,31 @@ printf 'config_usbDefaultToUvc=%s\n' "$uvc_default_enabled"
 printf 'sys.usb.config=%s\n' "$usb_config"
 printf 'persist.sys.usb.config=%s\n' "$persist_usb_config"
 printf 'adb_wifi_enabled=%s\n' "$adb_wifi_enabled"
+printf 'adb_enabled=%s\n' "$adb_enabled"
+printf 'service.adb.tcp.port=%s\n' "${adb_tcp_port:-unset}"
+printf 'persist.adb.tcp.port=%s\n' "${persist_adb_tcp_port:-unset}"
 printf 'config_adbWifiAutoEnable=%s\n' "$adb_wifi_auto_enabled"
 printf 'webcam_pid=%s\n' "$webcam_pid"
 printf 'lockscreen_disabled=%s\n' "$lockscreen_disabled"
+printf 'device_provisioned=%s\n' "$device_provisioned"
+printf 'user_setup_complete=%s\n' "$user_setup_complete"
+printf 'development_settings_enabled=%s\n' "$development_settings_enabled"
+printf 'home_activity=%s\n' "$home_activity"
 
 [[ "$device" == "dipper" ]] && pass "the connected device is dipper" ||
     fail "expected dipper, found ${device:-unset}"
+[[ "$model" == "CaCamOS MI 8 Webcam" ]] &&
+    pass "the dedicated CaCamOS product identity is installed" ||
+    fail "unexpected product model: ${model:-unset}"
+[[ "$brand" == "CaCamOS" ]] &&
+    pass "the Android product brand is CaCamOS" ||
+    fail "unexpected product brand: ${brand:-unset}"
+[[ "$cacamos_appliance" == "true" && "$cacamos_version" == "1.0.0" ]] &&
+    pass "the installed system is CaCamOS appliance 1.0.0" ||
+    fail "expected CaCamOS appliance 1.0.0"
+[[ "$setupwizard_mode" == "DISABLED" ]] &&
+    pass "the setup wizard is disabled" ||
+    fail "setup wizard mode is ${setupwizard_mode:-unset}"
 if [[ -n "$expected_build_incremental" ]]; then
     [[ "$build_incremental" == "$expected_build_incremental" ]] &&
         pass "the exact expected build is installed" ||
@@ -127,8 +167,47 @@ fi
 [[ "$webcam_package" == "package:com.android.DeviceAsWebcam" ]] &&
     pass "DeviceAsWebcam is installed" ||
     fail "DeviceAsWebcam package is missing"
+consumer_packages=(
+    com.android.calendar
+    com.android.camera2
+    com.android.contacts
+    com.android.deskclock
+    com.android.dialer
+    com.android.gallery3d
+    com.android.launcher3
+    com.android.managedprovisioning
+    com.android.music
+    com.android.quicksearchbox
+    org.lineageos.aperture
+    org.lineageos.eleven
+    org.lineageos.etar
+    org.lineageos.jelly
+    org.lineageos.setupwizard
+)
+remaining_consumer_packages=()
+for package_name in "${consumer_packages[@]}"; do
+    if grep -Fxq "package:$package_name" <<<"$system_packages"; then
+        remaining_consumer_packages+=("$package_name")
+    fi
+done
+if [[ "${#remaining_consumer_packages[@]}" -eq 0 ]]; then
+    pass "consumer applications and the generic launcher are absent"
+else
+    fail "consumer applications remain: ${remaining_consumer_packages[*]}"
+fi
 [[ "$webcam_pid" =~ ^[0-9]+$ ]] && pass "DeviceAsWebcam process is alive" ||
     fail "DeviceAsWebcam process is not alive"
+[[ "$device_provisioned" == "1" && "$user_setup_complete" == "1" ]] &&
+    pass "the appliance is provisioned without a consumer setup flow" ||
+    fail "the appliance is not fully provisioned"
+[[ "$development_settings_enabled" == "1" ]] &&
+    pass "the maintenance settings entry is enabled" ||
+    fail "maintenance settings are not enabled"
+grep -Fq \
+    'com.android.DeviceAsWebcam/com.android.deviceaswebcam.DeviceAsWebcamPreview' \
+    <<<"$home_activity" &&
+    pass "the webcam preview is the only HOME activity" ||
+    fail "the webcam preview is not the resolved HOME activity"
 
 for option in \
     CONFIG_MEDIA_SUPPORT=y \
@@ -178,11 +257,25 @@ if [[ "$adb_serial" == *:* ]]; then
 else
     fail "ADB target $adb_serial is not a network endpoint"
 fi
+mapfile -t active_adb_transports < <(
+    "$adb_bin" devices 2>/dev/null | awk '$2 == "device" { print $1 }'
+)
+for transport in "${active_adb_transports[@]}"; do
+    if [[ "$transport" != *:* ]]; then
+        fail "USB ADB transport is exposed on the UVC-only cable: $transport"
+    fi
+done
 [[ "$adb_wifi_enabled" == "1" ]] && pass "wireless debugging is enabled" ||
     fail "adb_wifi_enabled is ${adb_wifi_enabled:-unset}"
+[[ "$adb_enabled" == "1" ]] && pass "ADB maintenance is enabled" ||
+    fail "adb_enabled is ${adb_enabled:-unset}"
 [[ "$adb_wifi_auto_enabled" == "true" ]] &&
     pass "automatic wireless debugging is configured" ||
     fail "config_adbWifiAutoEnable is ${adb_wifi_auto_enabled:-unset}"
+[[ -z "$adb_tcp_port" || "$adb_tcp_port" == "-1" ]] &&
+    [[ -z "$persist_adb_tcp_port" || "$persist_adb_tcp_port" == "-1" ]] &&
+    pass "legacy unauthenticated ADB-over-TCP is disabled" ||
+    fail "legacy ADB TCP port is configured"
 
 grep -Eq \
     'topResumedActivity=.*com\.android\.DeviceAsWebcam/com\.android\.deviceaswebcam\.DeviceAsWebcamPreview' \
@@ -207,13 +300,11 @@ else
     pass "the crash buffer contains no DeviceAsWebcam crash"
 fi
 
-shopt -s nullglob
-host_candidates=(/dev/v4l/by-id/usb-Xiaomi_Xiaomi_Mi_8_*video-index0)
-shopt -u nullglob
-if [[ "${#host_candidates[@]}" -ne 1 ]]; then
-    fail "expected one Xiaomi Mi 8 host capture node, found ${#host_candidates[@]}"
+if [[ ! -x "$script_dir/find-cacamos-webcam.sh" ]]; then
+    fail "missing CaCamOS host-device detector"
+elif ! host_device="$("$script_dir/find-cacamos-webcam.sh" 2>&1)"; then
+    fail "$host_device"
 else
-    host_device="${host_candidates[0]}"
     host_info="$(v4l2-ctl --device="$host_device" --all 2>&1)"
     host_formats="$(v4l2-ctl --device="$host_device" --list-formats-ext 2>&1)"
 
@@ -224,9 +315,9 @@ else
     grep -Eq 'Driver name[[:space:]]*: uvcvideo' <<<"$host_info" &&
         pass "Linux bound the standard uvcvideo driver" ||
         fail "the host node is not bound to uvcvideo"
-    grep -Fq 'Xiaomi Mi 8: UVC Camera' <<<"$host_info" &&
-        pass "the host identifies the MI8 UVC camera" ||
-        fail "the host card name is not the MI8 UVC camera"
+    grep -Fiq 'CaCamOS Webcam' <<<"$host_info" &&
+        pass "the host identifies the dedicated CaCamOS webcam" ||
+        fail "the host card name does not expose the CaCamOS identity"
 
     if python3 - "$host_formats" <<'PY'
 import re
@@ -239,8 +330,15 @@ rates = {
 }
 if rates != {15, 30}:
     raise SystemExit(f"advertised rates are {sorted(rates)}, expected [15, 30]")
-if "'MJPG'" not in text or "1280x720" not in text or "1920x1080" not in text:
-    raise SystemExit("required MJPEG 720p/1080p modes are missing")
+if (
+    "'MJPG'" not in text
+    or "1280x720" not in text
+    or "1024x576" not in text
+    or "1920x1080" not in text
+):
+    raise SystemExit("required MJPEG 576p/720p/1080p modes are missing")
+if "640x360" in text or "'YUYV'" in text:
+    raise SystemExit("obsolete 360p or uncompressed mode is still advertised")
 PY
     then
         pass "the host sees only real 15/30 FPS MJPEG modes"
@@ -255,4 +353,4 @@ if [[ "$failures" -ne 0 ]]; then
     exit 1
 fi
 
-printf 'PASS: automatic startup, lock state, wireless ADB and host UVC gates passed.\n'
+printf 'PASS: CaCamOS 1.0.0 appliance startup, access and standard UVC gates passed.\n'

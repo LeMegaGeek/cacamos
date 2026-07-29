@@ -56,6 +56,12 @@ expected_patches=(
     0006-vendor-qcom-usb-uvc-rates.patch
     0007-settings-wireless-debugging-persistence.patch
     0008-adbd-uvc-only-cable.patch
+    0009-lineage-cacamos-appliance.patch
+    0010-build-make-cacamos-appliance.patch
+    0011-recovery-cacamos-adb.patch
+    0012-system-core-cacamos-boot-probe.patch
+    0013-build-soong-resource-limits.patch
+    0014-build-blueprint-resource-limits.patch
 )
 mapfile -t actual_patches < <(
     find "$patch_dir" -maxdepth 1 -type f -name '*.patch' -printf '%f\n' | sort
@@ -123,5 +129,17 @@ verify_patch packages/apps/Settings 0f0669fc699 4 \
     0007-settings-wireless-debugging-persistence.patch
 verify_patch packages/modules/adb 741291b810d7 4 \
     0008-adbd-uvc-only-cable.patch
+verify_patch vendor/lineage 87f03bdeafbf22dc35130c61ae2ff97f2041b90f 3 \
+    0009-lineage-cacamos-appliance.patch
+verify_patch build/make ab5acb1281035ebc9b0f190baf22ef3ea896106e 3 \
+    0010-build-make-cacamos-appliance.patch
+verify_patch bootable/recovery 16fcc1ff6cdd4734ee713d9034c7ef3674c5f8a5 3 \
+    0011-recovery-cacamos-adb.patch
+verify_patch system/core bcb8623207cf6e7a51876a891d8b7ad3d04fd8c2 3 \
+    0012-system-core-cacamos-boot-probe.patch
+verify_patch build/soong 0c564ed0dbb978777b8b0bec07c10dc7b6672520 3 \
+    0013-build-soong-resource-limits.patch
+verify_patch build/blueprint c7c63940d4be6a08a01a30ababca3abc0d1ac3da 3 \
+    0014-build-blueprint-resource-limits.patch
 
 printf '\nPASS: CaCamOS patch series is reproducible from the audited bases.\n'

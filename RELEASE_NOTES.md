@@ -2,6 +2,37 @@
 
 Source addons for exposing supported Xiaomi phones as standard USB webcams.
 
+## 1.0.0
+
+- Delivers the first dedicated CaCamOS appliance for the Xiaomi Mi 8:
+  CaCamOS-branded boot, automatic webcam preview, no lock screen or consumer
+  setup, and no browser, gallery, music player or generic launcher.
+- Exposes a standard UVC webcam on the physical USB cable. Stock OBS,
+  Chromium/WebRTC, GStreamer and VLC work without BGOBS or network video.
+- Keeps authenticated ADB maintenance on Wi-Fi while leaving USB dedicated to
+  UVC and disabling legacy unauthenticated ADB-over-TCP.
+- Advertises only MJPEG 1280x720, 1024x576 and 1920x1080 at 15 and 30 FPS.
+  The former 360p and YUYV modes are removed.
+- Queues a valid MJPEG warmup frame before `VIDIOC_STREAMON`, satisfying the
+  short first-frame deadline used by stock OBS.
+- Drains UVC control events on every bounded listener pass, fixing the lost
+  wakeup that could freeze rapid stream close/reopen.
+- Handles `ENODEV` and `ESHUTDOWN` as normal endpoint removal during cable and
+  host reset cycles.
+- Passes 100 rapid reopens, stock OBS at 30 FPS, WebRTC, GStreamer, VLC,
+  3,600 intact 720p frames over two minutes, and five host USB resets.
+- Adds complete appliance, recovery, controlled-build, host-application and
+  runtime qualification gates across fourteen reproducible patches.
+
+Qualified OTA:
+
+```text
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.0-dipper.zip
+size=1068308344
+sha256=7ff904f2bd95bda315266ab7c40b5d1fa2c2a6a354c53c15ae0393761360e1ea
+build_incremental=1785337449
+```
+
 ## 0.7.0
 
 - Publishes the physically qualified Xiaomi Mi 8 R13 OTA with reproducible

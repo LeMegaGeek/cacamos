@@ -10,6 +10,7 @@ pixel_format="${PIXEL_FORMAT:-MJPG}"
 device="${V4L2_DEVICE:-}"
 min_fps_ratio="${MIN_FPS_RATIO:-0.90}"
 max_fps_ratio="${MAX_FPS_RATIO:-1.10}"
+max_identical_frames="${MAX_IDENTICAL_FRAMES:-$fps}"
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
@@ -21,15 +22,13 @@ for command in v4l2-ctl timeout python3 ffmpeg ffprobe stat; do
 done
 
 if [[ -z "$device" ]]; then
-    shopt -s nullglob
-    candidates=(/dev/v4l/by-id/usb-Xiaomi_Xiaomi_Mi_8_*video-index0)
-    shopt -u nullglob
-    [[ "${#candidates[@]}" -eq 1 ]] ||
-        fail "expected one Xiaomi MI 8 capture node, found ${#candidates[@]}"
-    device="${candidates[0]}"
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    [[ -x "$script_dir/find-cacamos-webcam.sh" ]] ||
+        fail "missing executable: $script_dir/find-cacamos-webcam.sh"
+    device="$("$script_dir/find-cacamos-webcam.sh")"
 fi
 
-for value_name in duration attempts fps width height; do
+for value_name in duration attempts fps width height max_identical_frames; do
     value="${!value_name}"
     [[ "$value" =~ ^[1-9][0-9]*$ ]] ||
         fail "$value_name must be a positive integer"
@@ -59,6 +58,8 @@ printf 'Device: %s\n' "$device"
 printf 'Mode: %sx%s %s at %s fps\n' "$width" "$height" "$pixel_format" "$fps"
 printf 'Validation: %s attempt(s), %s seconds and %s frames each\n' \
     "$attempts" "$duration" "$frame_count"
+printf 'Liveness: at most %s consecutive byte-identical frames\n' \
+    "$max_identical_frames"
 
 for ((attempt = 1; attempt <= attempts; ++attempt)); do
     capture="$work_dir/attempt-${attempt}.${pixel_format,,}"
@@ -119,37 +120,74 @@ PY
         fail "V4L2 timestamps or frame sequence are invalid; evidence kept in $work_dir"
     fi
 
-    if [[ "$pixel_format" == "MJPG" ]] && ! python3 - "$capture" "$frame_count" <<'PY'
+    if [[ "$pixel_format" == "MJPG" ]] && ! python3 - \
+        "$capture" "$frame_count" "$max_identical_frames" <<'PY'
+import hashlib
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
 expected = int(sys.argv[2])
-data = path.read_bytes()
+max_identical = int(sys.argv[3])
 soi = b"\xff\xd8"
 eoi = b"\xff\xd9"
 
-if data.count(soi) != expected or data.count(eoi) != expected:
-    raise SystemExit(
-        f"JPEG marker mismatch: SOI={data.count(soi)}, "
-        f"EOI={data.count(eoi)}, expected={expected}"
-    )
+pending = bytearray()
+frame_count = 0
+byte_offset = 0
+last_digest = None
+identical_run = 0
+longest_identical_run = 0
 
-offset = 0
-for frame in range(1, expected + 1):
-    if data[offset:offset + 2] != soi:
-        raise SystemExit(
-            f"frame {frame} does not start with SOI at byte {offset}"
-        )
-    end = data.find(eoi, offset + 2)
-    if end < 0:
-        raise SystemExit(f"frame {frame} has no EOI marker")
-    offset = end + 2
+with path.open("rb") as stream:
+    while True:
+        chunk = stream.read(1024 * 1024)
+        if chunk:
+            pending.extend(chunk)
 
-if offset != len(data):
+        while len(pending) >= 2:
+            if pending[:2] != soi:
+                raise SystemExit(
+                    f"frame {frame_count + 1} does not start with SOI "
+                    f"at byte {byte_offset}"
+                )
+            end = pending.find(eoi, 2)
+            if end < 0:
+                break
+
+            end += 2
+            encoded = memoryview(pending)[:end]
+            digest = hashlib.sha256(encoded).digest()
+            del encoded
+            del pending[:end]
+            byte_offset += end
+            frame_count += 1
+
+            if digest == last_digest:
+                identical_run += 1
+            else:
+                last_digest = digest
+                identical_run = 1
+            longest_identical_run = max(longest_identical_run, identical_run)
+
+            if frame_count > expected:
+                raise SystemExit(f"capture contains more than {expected} JPEG frames")
+
+        if not chunk:
+            break
+
+if pending:
     raise SystemExit(
-        f"{len(data) - offset} trailing byte(s) remain after frame {expected}"
+        f"{len(pending)} trailing byte(s) remain after frame {frame_count}"
     )
+if frame_count != expected:
+    raise SystemExit(f"capture contains {frame_count}/{expected} JPEG frames")
+if longest_identical_run > max_identical:
+    raise SystemExit(
+        f"frozen MJPEG stream: {longest_identical_run} consecutive "
+        f"byte-identical frames, maximum {max_identical}"
+    )
+print(f"Liveness: longest byte-identical run was {longest_identical_run} frame(s)")
 PY
     then
         keep_work_dir=1
@@ -181,6 +219,49 @@ PY
         if [[ "$actual_bytes" -ne "$expected_bytes" ]]; then
             keep_work_dir=1
             fail "YUYV capture has $actual_bytes/$expected_bytes bytes; evidence kept in $work_dir"
+        fi
+        if ! python3 - "$capture" "$width" "$height" "$frame_count" \
+            "$max_identical_frames" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+frame_size = int(sys.argv[2]) * int(sys.argv[3]) * 2
+expected = int(sys.argv[4])
+max_identical = int(sys.argv[5])
+last_digest = None
+identical_run = 0
+longest_identical_run = 0
+
+with path.open("rb") as stream:
+    for frame_number in range(1, expected + 1):
+        frame = stream.read(frame_size)
+        if len(frame) != frame_size:
+            raise SystemExit(
+                f"frame {frame_number} has {len(frame)}/{frame_size} bytes"
+            )
+        digest = hashlib.sha256(frame).digest()
+        if digest == last_digest:
+            identical_run += 1
+        else:
+            last_digest = digest
+            identical_run = 1
+        longest_identical_run = max(longest_identical_run, identical_run)
+
+    if stream.read(1):
+        raise SystemExit("capture contains trailing YUYV data")
+
+if longest_identical_run > max_identical:
+    raise SystemExit(
+        f"frozen YUYV stream: {longest_identical_run} consecutive "
+        f"byte-identical frames, maximum {max_identical}"
+    )
+print(f"Liveness: longest byte-identical run was {longest_identical_run} frame(s)")
+PY
+        then
+            keep_work_dir=1
+            fail "YUYV stream liveness failed; evidence kept in $work_dir"
         fi
         if ! nice -n 10 ffmpeg -hide_banner -nostdin -v warning -xerror \
             -threads 2 -f rawvideo -pixel_format yuyv422 \

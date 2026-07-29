@@ -14,6 +14,10 @@ usb_reset_target="${USB_RESET_TARGET:-18d1:4eed}"
 run_stream_matrix="${RUN_STREAM_MATRIX:-1}"
 run_long_capture="${RUN_LONG_CAPTURE:-1}"
 run_usb_resets="${RUN_USB_RESETS:-1}"
+run_application_tests="${RUN_APPLICATION_TESTS:-1}"
+run_obs_test="${RUN_OBS_TEST:-1}"
+run_rapid_reopen="${RUN_RAPID_REOPEN:-1}"
+rapid_reopen_attempts="${RAPID_REOPEN_ATTEMPTS:-20}"
 report_dir="${REPORT_DIR:-$project_root/dist/cacam-os-qualifications}"
 
 fail() {
@@ -32,7 +36,13 @@ require_boolean() {
 for command in "$adb_bin" fuser grep rg usbreset v4l2-ctl; do
     command -v "$command" >/dev/null 2>&1 || fail "missing command: $command"
 done
-for script in verify-webcam.sh test-host-uvc-stream.sh; do
+for script in \
+    find-cacamos-webcam.sh \
+    test-host-applications.sh \
+    test-host-obs.sh \
+    test-host-uvc-reopen.sh \
+    test-host-uvc-stream.sh \
+    verify-webcam.sh; do
     [[ -x "$script_dir/$script" ]] || fail "missing executable: $script_dir/$script"
 done
 require_positive_integer MATRIX_DURATION "$matrix_duration"
@@ -40,9 +50,13 @@ require_positive_integer MATRIX_ATTEMPTS "$matrix_attempts"
 require_positive_integer LONG_DURATION "$long_duration"
 require_positive_integer REBIND_ATTEMPTS "$rebind_attempts"
 require_positive_integer REBIND_CAPTURE_DURATION "$rebind_capture_duration"
+require_positive_integer RAPID_REOPEN_ATTEMPTS "$rapid_reopen_attempts"
 require_boolean RUN_STREAM_MATRIX "$run_stream_matrix"
 require_boolean RUN_LONG_CAPTURE "$run_long_capture"
 require_boolean RUN_USB_RESETS "$run_usb_resets"
+require_boolean RUN_APPLICATION_TESTS "$run_application_tests"
+require_boolean RUN_OBS_TEST "$run_obs_test"
+require_boolean RUN_RAPID_REOPEN "$run_rapid_reopen"
 
 if [[ -z "$adb_serial" ]]; then
     mapfile -t android_serials < <(
@@ -62,10 +76,13 @@ adb_exec() {
 }
 
 wait_for_host_uvc() {
-    local attempt
+    local attempt candidate
 
     for ((attempt = 1; attempt <= 60; ++attempt)); do
-        if v4l2-ctl --device="$host_device" --all >/dev/null 2>&1; then
+        candidate="$("$script_dir/find-cacamos-webcam.sh" 2>/dev/null || true)"
+        if [[ -n "$candidate" ]] &&
+            v4l2-ctl --device="$candidate" --all >/dev/null 2>&1; then
+            host_device="$candidate"
             return 0
         fi
         sleep 1
@@ -115,17 +132,15 @@ printf 'evidence=%s\n' "$run_dir"
 printf 'run_stream_matrix=%s\n' "$run_stream_matrix"
 printf 'run_long_capture=%s\n' "$run_long_capture"
 printf 'run_usb_resets=%s\n' "$run_usb_resets"
+printf 'run_application_tests=%s\n' "$run_application_tests"
+printf 'run_obs_test=%s\n' "$run_obs_test"
+printf 'run_rapid_reopen=%s\n' "$run_rapid_reopen"
 
 "$script_dir/verify-webcam.sh" "$run_dir"
 
-shopt -s nullglob
-host_candidates=(/dev/v4l/by-id/usb-Xiaomi_Xiaomi_Mi_8_*video-index0)
-shopt -u nullglob
-[[ "${#host_candidates[@]}" -eq 1 ]] ||
-    fail "expected exactly one MI8 host capture node"
-host_device="${host_candidates[0]}"
+host_device="$("$script_dir/find-cacamos-webcam.sh")"
 if fuser "$host_device" >/dev/null 2>&1; then
-    fail "$host_device is already in use; close its OBS source before qualification"
+    fail "$host_device is already in use; close every camera application before qualification"
 fi
 
 boot_id_before="$(adb_exec shell cat /proc/sys/kernel/random/boot_id | tr -d '\r')"
@@ -148,17 +163,33 @@ functionfs_idle_timeouts="$(
     fail "adbd repeated its unused USB FunctionFS bind $functionfs_idle_timeouts times in 10 seconds"
 adb_exec logcat -b all -c
 
+if [[ "$run_rapid_reopen" -eq 1 ]]; then
+    printf '\nRapid UVC close/reopen regression\n'
+    RAPID_REOPEN_ATTEMPTS="$rapid_reopen_attempts" V4L2_DEVICE="$host_device" \
+        "$script_dir/test-host-uvc-reopen.sh" "$run_dir"
+fi
+
+if [[ "$run_application_tests" -eq 1 ]]; then
+    printf '\nStandard desktop and WebRTC applications\n'
+    V4L2_DEVICE="$host_device" \
+        "$script_dir/test-host-applications.sh" "$run_dir/applications"
+fi
+
+if [[ "$run_obs_test" -eq 1 ]]; then
+    printf '\nStock OBS V4L2 source\n'
+    V4L2_DEVICE="$host_device" \
+        "$script_dir/test-host-obs.sh" "$run_dir/applications"
+fi
+
 if [[ "$run_stream_matrix" -eq 1 ]]; then
     printf '\nComplete advertised-mode matrix\n'
     mode_matrix=(
         "MJPG 1280 720 30"
         "MJPG 1280 720 15"
-        "MJPG 640 360 30"
-        "MJPG 640 360 15"
+        "MJPG 1024 576 30"
+        "MJPG 1024 576 15"
         "MJPG 1920 1080 30"
         "MJPG 1920 1080 15"
-        "YUYV 640 360 30"
-        "YUYV 640 360 15"
     )
     for mode in "${mode_matrix[@]}"; do
         read -r pixel_format width height fps <<<"$mode"
@@ -203,7 +234,7 @@ pid_after="$(adb_exec shell pidof com.android.DeviceAsWebcam | tr -d '\r')"
     fail "DeviceAsWebcam restarted during qualification"
 
 if rg -i \
-    'aborted incomplete frame|timed out waiting for an encoded camera frame|camera frame production stopped|VIDIOC_DQBUF failed|JPEG compression failed|Encoder produced an invalid JPEG|timed out while shutting down the camera controller|camera controller cleanup failed|ImageReader thread did not stop cleanly|forcing shutdown of .* executor|Fatal signal|ANR in com.android.DeviceAsWebcam' \
+    'aborted incomplete frame|timed out waiting for an encoded camera frame|camera frame production stopped|VIDIOC_DQBUF failed|Failed to dequeue V4L2 event|JPEG compression failed|Encoder produced an invalid JPEG|timed out while shutting down the camera controller|camera controller cleanup failed|ImageReader thread did not stop cleanly|forcing shutdown of .* executor|Fatal signal|ANR in com.android.DeviceAsWebcam' \
     "$run_dir/phone-logcat.txt" "$run_dir/phone-kernel-log.txt"; then
     fail "phone logs contain a stream-integrity or process failure"
 fi

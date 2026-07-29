@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>CaCamOS WebRTC probe</title>
+<body data-status="running"><pre id="result">Starting</pre></body>
+<script>
+const result = {status: "running", devices: [], frames: 0};
+
+function finish(status, details = {}) {
+  Object.assign(result, details, {status});
+  document.body.dataset.status = status;
+  document.getElementById("result").textContent = JSON.stringify(result);
+}
+
+async function run() {
+  let warmup;
+  let stream;
+  const timeout = setTimeout(() => finish("timeout"), 20000);
+
+  try {
+    warmup = await navigator.mediaDevices.getUserMedia({video: true});
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    result.devices = devices
+        .filter((device) => device.kind === "videoinput")
+        .map((device) => ({deviceId: device.deviceId, label: device.label}));
+    warmup.getTracks().forEach((track) => track.stop());
+    warmup = null;
+
+    const target = devices.find((device) => {
+      if (device.kind !== "videoinput") return false;
+      const label = device.label.toLowerCase();
+      return label.includes("cacamos") ||
+          label.includes("xiaomi mi 8") ||
+          label === "uvc camera";
+    });
+    if (!target) {
+      finish("device-not-found");
+      return;
+    }
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        deviceId: {exact: target.deviceId},
+        width: {ideal: 1280},
+        height: {ideal: 720},
+        frameRate: {ideal: 30},
+      },
+    });
+
+    const track = stream.getVideoTracks()[0];
+    const video = document.createElement("video");
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    await video.play();
+
+    const startedAt = performance.now();
+    const onFrame = () => {
+      result.frames += 1;
+      if (result.frames >= 120) {
+        const elapsedSeconds = (performance.now() - startedAt) / 1000;
+        const settings = track.getSettings();
+        const measuredFps = result.frames / elapsedSeconds;
+        const valid =
+            settings.width === 1280 &&
+            settings.height === 720 &&
+            video.videoWidth === 1280 &&
+            video.videoHeight === 720 &&
+            measuredFps >= 27 &&
+            measuredFps <= 33;
+        clearTimeout(timeout);
+        finish(valid ? "passed" : "invalid-stream", {
+          elapsedSeconds,
+          measuredFps,
+          settings,
+          targetLabel: target.label,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+        });
+        track.stop();
+        return;
+      }
+      video.requestVideoFrameCallback(onFrame);
+    };
+    video.requestVideoFrameCallback(onFrame);
+  } catch (error) {
+    clearTimeout(timeout);
+    if (warmup) warmup.getTracks().forEach((track) => track.stop());
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+    finish("failed", {error: `${error.name}: ${error.message}`});
+  }
+}
+
+run();
+</script>
+</html>

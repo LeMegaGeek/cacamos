@@ -1,8 +1,20 @@
+diff --git a/device/xiaomi/dipper/BoardConfig.mk b/device/xiaomi/dipper/BoardConfig.mk
+index d5aa647..0946c68 100644
+--- a/device/xiaomi/dipper/BoardConfig.mk
++++ b/device/xiaomi/dipper/BoardConfig.mk
+@@ -16,6 +16,7 @@ TARGET_OTA_ASSERT_DEVICE := dipper
+ 
+ # Display
+ TARGET_SCREEN_DENSITY := 440
++TARGET_BOOTANIMATION := device/xiaomi/dipper/bootanimation/bootanimation.zip
+ 
+ # Kernel
+ TARGET_KERNEL_CONFIG += vendor/xiaomi/dipper.config
 diff --git a/device/xiaomi/dipper/device.mk b/device/xiaomi/dipper/device.mk
-index 7eed60e45bd3d9451d493854f6f782477e249f15..59e024610ef653504475402720a888059c15ab39 100644
+index 7eed60e..71a0fd9 100644
 --- a/device/xiaomi/dipper/device.mk
 +++ b/device/xiaomi/dipper/device.mk
-@@ -23,6 +23,19 @@ DEVICE_PACKAGE_OVERLAYS += \
+@@ -23,15 +23,33 @@ DEVICE_PACKAGE_OVERLAYS += \
  PRODUCT_PACKAGES += \
      NoCutoutOverlay
  
@@ -20,11 +32,96 @@ index 7eed60e45bd3d9451d493854f6f782477e249f15..59e024610ef653504475402720a88805
 +    ro.usb.uvc.enabled=true
 +
  # Permissions
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/permissions/privapp-permissions-cacamos.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp-permissions-cacamos.xml \
++    frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
++    frameworks/native/data/etc/android.hardware.sensor.hifi_sensors.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.hifi_sensors.xml
++
++ifneq ($(CACAMOS_APPLIANCE),true)
  PRODUCT_COPY_FILES += \
      frameworks/native/data/etc/android.hardware.nfc.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.xml \
+     frameworks/native/data/etc/android.hardware.nfc.hce.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.hce.xml \
+     frameworks/native/data/etc/android.hardware.nfc.hcef.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.nfc.hcef.xml \
+-    frameworks/native/data/etc/android.hardware.sensor.barometer.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.barometer.xml \
+-    frameworks/native/data/etc/android.hardware.sensor.hifi_sensors.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/android.hardware.sensor.hifi_sensors.xml \
+     frameworks/native/data/etc/com.android.nfc_extras.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/com.android.nfc_extras.xml \
+     frameworks/native/data/etc/com.nxp.mifare.xml:$(TARGET_COPY_OUT_VENDOR)/etc/permissions/com.nxp.mifare.xml
++endif
+ 
+ # Screen density
+ PRODUCT_AAPT_CONFIG := normal
+@@ -67,6 +85,9 @@ PRODUCT_PACKAGES += \
+ PRODUCT_PACKAGES += \
+     init.target.rc
+ 
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/init/cacamos_boot_probe.sh:$(TARGET_COPY_OUT_SYSTEM)/bin/cacamos_boot_probe.sh
++
+ # GPS
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/gps/gps_debug.conf:$(TARGET_COPY_OUT_SYSTEM)/etc/gps_debug.conf
+@@ -88,7 +109,8 @@ PRODUCT_COPY_FILES += \
+ PRODUCT_PACKAGES += \
+     vendor.lineage.livedisplay-service.xiaomi_sdm845
+ 
+-# NFC
++# NFC is not part of the dedicated webcam appliance UI.
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     android.hardware.nfc-service.nxp \
+     com.android.nfc_extras \
+@@ -97,10 +119,13 @@ PRODUCT_PACKAGES += \
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/nfc/libnfc-nci.conf:$(TARGET_COPY_OUT_PRODUCT)/etc/libnfc-nci.conf \
+     $(LOCAL_PATH)/nfc/libnfc-nxp.conf:$(TARGET_COPY_OUT_VENDOR)/etc/libnfc-nxp.conf
++endif
+ 
+ # PocketMode
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     XiaomiPocketMode
++endif
+ 
+ # Soong namespaces
+ PRODUCT_SOONG_NAMESPACES += \
+diff --git a/device/xiaomi/dipper/lineage_dipper.mk b/device/xiaomi/dipper/lineage_dipper.mk
+index eae117f..735aa02 100644
+--- a/device/xiaomi/dipper/lineage_dipper.mk
++++ b/device/xiaomi/dipper/lineage_dipper.mk
+@@ -4,16 +4,28 @@
+ # SPDX-License-Identifier: Apache-2.0
+ #
+ 
++# Build the dedicated appliance package graph. DeviceAsWebcam is the only HOME
++# activity; consumer phone applications and their launcher are excluded.
++CACAMOS_APPLIANCE := true
++PRODUCT_NO_CAMERA := true
++
+ $(call inherit-product, device/xiaomi/dipper/device.mk)
+ 
+ # Inherit some common Lineage stuff.
+ $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
+ 
++PRODUCT_PRODUCT_PROPERTIES += \
++    ro.setupwizard.mode=DISABLED
++
++PRODUCT_SYSTEM_PROPERTIES += \
++    ro.cacamos.appliance=true \
++    ro.cacamos.version=1.0.0
++
+ # Device identifier. This must come after all inclusions.
+ PRODUCT_NAME := lineage_dipper
+ PRODUCT_DEVICE := dipper
+-PRODUCT_BRAND := Xiaomi
+-PRODUCT_MODEL := MI 8
++PRODUCT_BRAND := CaCamOS
++PRODUCT_MODEL := CaCamOS MI 8 Webcam
+ PRODUCT_MANUFACTURER := Xiaomi
+ 
+ PRODUCT_BUILD_PROP_OVERRIDES += \
 diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp
 new file mode 100644
-index 0000000000000000000000000000000000000000..72febd267875fb33882354bb137e1e8697f2c196
+index 0000000..72febd2
 --- /dev/null
 +++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/Android.bp
 @@ -0,0 +1,7 @@
@@ -37,7 +134,7 @@ index 0000000000000000000000000000000000000000..72febd267875fb33882354bb137e1e86
 +}
 diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/AndroidManifest.xml b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/AndroidManifest.xml
 new file mode 100644
-index 0000000000000000000000000000000000000000..92743a474d89cd59c3584ae66c68a797eac13713
+index 0000000..92743a4
 --- /dev/null
 +++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/AndroidManifest.xml
 @@ -0,0 +1,13 @@
@@ -56,14 +153,14 @@ index 0000000000000000000000000000000000000000..92743a474d89cd59c3584ae66c68a797
 +</manifest>
 diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_cameras.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_cameras.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..fe51488c7066f6687ef680d6bfaa4f7768ef205c
+index 0000000..fe51488
 --- /dev/null
 +++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_cameras.json
 @@ -0,0 +1 @@
 +[]
 diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_v4l2_nodes.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_v4l2_nodes.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..1d3e7fa197cd738fa43603d46b38d2e2165fab55
+index 0000000..1d3e7fa
 --- /dev/null
 +++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/ignored_v4l2_nodes.json
 @@ -0,0 +1,7 @@
@@ -76,20 +173,20 @@ index 0000000000000000000000000000000000000000..1d3e7fa197cd738fa43603d46b38d2e2
 +]
 diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_mapping.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_mapping.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..0967ef424bce6791893e9a57bb952f80fd536e93
+index 0000000..0967ef4
 --- /dev/null
 +++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_mapping.json
 @@ -0,0 +1 @@
 +{}
 diff --git a/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_zoom_ratio_ranges.json b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_zoom_ratio_ranges.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..0967ef424bce6791893e9a57bb952f80fd536e93
+index 0000000..0967ef4
 --- /dev/null
 +++ b/device/xiaomi/dipper/overlay/DeviceAsWebcamCaCamOsDipper/res/raw/physical_camera_zoom_ratio_ranges.json
 @@ -0,0 +1 @@
 +{}
 diff --git a/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml b/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
-index f007795dd5be3fe60e4af1e28968570a7f9332d2..21f8b856aed78475136bf5cf59777d10bccad449 100644
+index f007795..21f8b85 100644
 --- a/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
 +++ b/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml
 @@ -700,4 +700,12 @@
@@ -105,3 +202,31 @@ index f007795dd5be3fe60e4af1e28968570a7f9332d2..21f8b856aed78475136bf5cf59777d10
 +    <!-- CaCamOS is a dedicated camera appliance: do not stop at the swipe keyguard. -->
 +    <bool name="config_disableLockscreenByDefault">true</bool>
  </resources>
+diff --git a/device/xiaomi/dipper/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml b/device/xiaomi/dipper/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
+index 055d73e..a73d83f 100644
+--- a/device/xiaomi/dipper/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
++++ b/device/xiaomi/dipper/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml
+@@ -17,9 +17,10 @@
+  */
+ -->
+ <resources>
+-
+     <!-- Default for Settings.Global.DEVICE_NAME $1=MODEL-->
+-    <string name="def_device_name_simple">Xiaomi Mi 8</string>
++    <string name="def_device_name_simple">CaCamOS Webcam</string>
+ 
++    <bool name="def_device_provisioned">true</bool>
++    <bool name="def_lockscreen_disabled">true</bool>
++    <bool name="def_user_setup_complete">true</bool>
+ </resources>
+-
+diff --git a/device/xiaomi/dipper/vendor.prop b/device/xiaomi/dipper/vendor.prop
+index 94d06d0..0f5843a 100644
+--- a/device/xiaomi/dipper/vendor.prop
++++ b/device/xiaomi/dipper/vendor.prop
+@@ -18,4 +18,4 @@ ro.hardware.flp=brcm
+ ro.hardware.gps=brcm
+ 
+ # USB
+-vendor.usb.product_string=Xiaomi Mi 8
++vendor.usb.product_string=CaCamOS Webcam

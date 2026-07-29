@@ -13,7 +13,11 @@ without network streaming.
 - Codename: `dipper`
 - Platform: Qualcomm `sdm845`
 - LineageOS branch checked: `lineage-22.2`
-- CaCamOS release: `0.2.0`, ROM R13
+- CaCamOS release: `1.0.0` dedicated webcam OS
+- Previous release: `0.7.0`, ROM R13
+
+The exact 1.0.0 artifact and physical qualification evidence are recorded in
+[`V1_ACCEPTANCE.md`](V1_ACCEPTANCE.md).
 
 ## Important Difference From Mi 10 Pro
 
@@ -70,35 +74,22 @@ Verify the source tree before building:
 /path/to/cacamos/lineageos/dipper/tools/verify-source-tree.sh /path/to/lineageos
 ```
 
-Then build. On Denis' current desktop, use the conservative wrapper first. It
-checks memory, uses two low-priority build jobs, reserves two CPU cores for the
-desktop when `taskset` is available, and stops the build if available memory
-drops too low while it is running:
+Then build with the resource-controlled wrapper. It applies CPU affinity,
+memory and swap preflight checks, a Go memory limit, and a runtime watchdog.
+The qualified 16-core host configuration uses ten build workers and reserves
+six cores:
 
 ```bash
 /path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
-  --check-only
-
-/path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
-  --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper
-```
-
-The default CPU reservation can be adjusted if needed:
-
-```bash
-/path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
-  --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
-  --reserve-cores 3
-```
-
-The runtime memory watchdog defaults to stopping the build below 4096 MiB of
-`MemAvailable`. To override the threshold:
-
-```bash
-/path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
-  --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
-  --min-free-mem-mib 4096
+  --target bacon \
+  --existing-graph \
+  --jobs 10 \
+  --cpu-set 0-9 \
+  --reserve-cores 6 \
+  --go-memlimit-mib 8192 \
+  --min-free-mem-mib 5120 \
+  --min-free-swap-mib 32768
 ```
 
 On a machine with enough RAM, the normal LineageOS command remains:
@@ -111,17 +102,18 @@ mka bacon
 
 ## Qualified OTA
 
-CaCamOS 0.7.0 ships the exact MI8 R13 OTA qualified on the physical device:
+CaCamOS 1.0.0 ships the exact dedicated MI8 OTA qualified on the physical
+device:
 
 ```text
-lineage-22.2-20260727-UNOFFICIAL-CACAMOS-R13-dipper.zip
-size=1223300465
-sha256=efed9f1141514d1835bd8e48e6a5d7d04fa97fb0ab97083fd8df194f42c4a7a8
-build_incremental=1785181771
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.0-dipper.zip
+size=1068308344
+sha256=7ff904f2bd95bda315266ab7c40b5d1fa2c2a6a354c53c15ae0393761360e1ea
+build_incremental=1785337449
 ```
 
 Download:
-<https://github.com/LeMegaGeek/cacamos/releases/tag/v0.7.0>
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.0.0>
 
 ## Runtime Validation
 
@@ -150,7 +142,7 @@ function, lock state, wireless ADB, advertised modes, repeated raw JPEG
 integrity and one sustained stream:
 
 ```bash
-EXPECTED_BUILD_INCREMENTAL=1785181771 ADB_SERIAL=<wireless-ip:port> \
+EXPECTED_BUILD_INCREMENTAL=1785337449 ADB_SERIAL=<wireless-ip:port> \
   ./lineageos/dipper/tools/qualify-runtime.sh
 ```
 
@@ -165,7 +157,7 @@ To install the verified OTA from a local LineageOS workspace:
 cd /home/denis/Documents/Denis/dev/cacamos/lineageos/dipper/tools
 ./flash-verified-build.sh \
   /home/denis/Documents/Denis/dev/lineage-dipper \
-  /home/denis/Documents/Denis/dev/lineage-dipper/out/target/product/dipper/lineage-22.2-20260727-UNOFFICIAL-CACAMOS-R13-dipper.zip
+  /home/denis/Documents/Denis/dev/lineage-dipper/out/target/product/dipper/lineage_dipper-ota.zip
 ```
 
 The supported MI8 installation path is deliberately singular:
@@ -178,16 +170,15 @@ The installer first validates the source tree, compiled APK, kernel, staged
 payload, device metadata and OTA signature. It then requires exactly one ADB
 sideload device and refuses every other device state.
 
-## OBS on Linux
+## Standard Host Applications
 
-Use the direct V4L2 capture node, such as `/dev/video0`, for the CaCamOS source
-in OBS Studio. OBS 32.2.0 compares the configured path with the udev remove/add
-path literally; a `/dev/v4l/by-id/...` path therefore does not reconnect
-automatically after the cable returns.
+CaCamOS is a standard UVC device. Physical qualification passes stock OBS,
+Chromium/WebRTC, GStreamer and VLC without BGOBS. The final OBS run captured
+252 frames over 8.5 seconds at exactly 30 FPS.
 
-R13 returned to 1280x720 MJPEG at 30 FPS after three consecutive USB remove/add
-cycles with the direct node. A later capture timeout can still freeze the OBS
-picture. Restart OBS to restore capture; this is a known R13 limitation.
+The supported modes are MJPEG 1280x720, 1024x576 and 1920x1080 at 15 and
+30 FPS. The 1.0.0 warmup frame satisfies OBS's short initial-frame deadline,
+and the periodic control-event drain preserves rapid close/reopen operation.
 
 Do not use `svc usb resetUsbGadget` for diagnostics on the MI8. It can panic
 this kernel. The qualification tool uses a host-side USB reset instead.

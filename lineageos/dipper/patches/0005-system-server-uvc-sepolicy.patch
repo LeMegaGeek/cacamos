@@ -10,6 +10,19 @@ index b87b31916ced0cb560f4ac0dd76d6803f90692ea..3044ab0badf647f62f43d191dedc79c3
  set_prop(adbd, ffs_control_prop)
  set_prop(adbd, adbd_tradeinmode_prop)
  
+diff --git a/system/sepolicy/private/device_as_webcam.te b/system/sepolicy/private/device_as_webcam.te
+index 98c91c2f9a9544e0a458fdf5bda7b4233b3b7c1b..d79d3d708aa557e64f9e6e0c1a8ca4f94a9d9868 100644
+--- a/system/sepolicy/private/device_as_webcam.te
++++ b/system/sepolicy/private/device_as_webcam.te
+@@ -19,3 +19,8 @@ allow device_as_webcam device:dir r_dir_perms;
+ # be accessed by the DeviceAsWebcam Service.
+ allow device_as_webcam video_device:dir r_dir_perms;
+ allow device_as_webcam video_device:chr_file rw_file_perms;
++
++# CaCamOS keeps a bounded startup trace in the recovery-readable cache.
++allow device_as_webcam cache_file:dir search;
++allow device_as_webcam cache_recovery_file:dir rw_dir_perms;
++allow device_as_webcam cache_recovery_file:file create_file_perms;
 diff --git a/system/sepolicy/private/system_server.te b/system/sepolicy/private/system_server.te
 index 01097f2b1a14e7b66b85163df607591170a85c5d..a4be72ca1789be16227b4f17f5e3d1c6f28d202c 100644
 --- a/system/sepolicy/private/system_server.te

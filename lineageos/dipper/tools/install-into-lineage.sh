@@ -22,6 +22,7 @@ fi
 
 lineage_root="$(cd "$lineage_root" && pwd)"
 device_mk="$lineage_root/device/xiaomi/dipper/device.mk"
+device_product="$lineage_root/device/xiaomi/dipper/lineage_dipper.mk"
 kernel_fragment="$lineage_root/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xiaomi/dipper.config"
 usb_default_overlay="$lineage_root/device/xiaomi/dipper/overlay/frameworks/base/core/res/res/values/config.xml"
 uvc_provider="$lineage_root/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp"
@@ -30,6 +31,10 @@ webcam_prefs="$lineage_root/packages/services/DeviceAsWebcam/impl/src/com/androi
 webcam_service="$lineage_root/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java"
 adbd_main="$lineage_root/packages/modules/adb/daemon/main.cpp"
 wireless_debugging_enabler="$lineage_root/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java"
+usb_debugging_controller="$lineage_root/packages/apps/Settings/src/com/android/settings/development/AdbPreferenceController.java"
+lineage_common_mobile="$lineage_root/vendor/lineage/config/common_mobile.mk"
+recovery_main="$lineage_root/bootable/recovery/recovery_main.cpp"
+system_init="$lineage_root/system/core/rootdir/init.rc"
 
 mapfile -t patch_files < <(find "$patch_dir" -maxdepth 1 -type f -name '*.patch' -print | sort)
 [[ "${#patch_files[@]}" -gt 0 ]] || fail "no addon patches found in $patch_dir"
@@ -42,16 +47,24 @@ mapfile -t patch_files < <(find "$patch_dir" -maxdepth 1 -type f -name '*.patch'
 if grep -q 'CaCamOsDeviceAsWebcamDipper' "$device_mk" &&
     grep -q 'ro.usb.uvc.enabled=true' "$device_mk" &&
     grep -q 'ro.usb.uvc.disable_video_encode_flag=true' "$device_mk" &&
+    grep -q 'CACAMOS_APPLIANCE := false' "$device_product" &&
+    grep -q 'ro.cacamos.version=1.0.0' "$device_product" &&
     grep -q '<bool name="config_usbDefaultToUvc">true</bool>' "$usb_default_overlay" &&
     grep -q '<bool name="config_adbWifiAutoEnable">true</bool>' "$usb_default_overlay" &&
     grep -q '<bool name="config_disableLockscreenByDefault">true</bool>' "$usb_default_overlay" &&
     grep -q 'CONFIG_USB_CONFIGFS_F_UVC=y' "$kernel_fragment" &&
     grep -q 'getFrameAndQueueBufferToGadgetDriver(true)' "$uvc_provider" &&
     grep -q 'android:directBootAware="true"' "$webcam_manifest" &&
+    grep -q 'android:persistent="true"' "$webcam_manifest" &&
+    grep -q 'android.intent.category.HOME' "$webcam_manifest" &&
     grep -q 'createDeviceProtectedStorageContext' "$webcam_prefs" &&
-    grep -q 'launchPreview()' "$webcam_service" &&
+    grep -q 'isWebcamReady()' "$webcam_service" &&
     grep -q 'USB FunctionFS transport disabled by CaCamOS UVC-only policy' "$adbd_main" &&
-    grep -q 'config_adbWifiAutoEnable' "$wireless_debugging_enabler"; then
+    grep -q 'config_adbWifiAutoEnable' "$wireless_debugging_enabler" &&
+    grep -q 'isUsbAdbDisabledByProduct' "$usb_debugging_controller" &&
+    grep -q 'CACAMOS_APPLIANCE' "$lineage_common_mobile" &&
+    grep -q 'CaCamOS recovery ADB enabled for appliance maintenance' "$recovery_main" &&
+    grep -q 'service cacamos_boot_probe' "$system_init"; then
     printf 'CaCam OS dipper webcam addon already appears to be installed.\n'
     "$script_dir/verify-patch-series.sh" --match-worktrees "$lineage_root"
     "$script_dir/verify-source-tree.sh" "$lineage_root"
@@ -92,7 +105,5 @@ printf 'Verifying patched tree...\n'
 "$script_dir/verify-source-tree.sh" "$lineage_root"
 
 printf '\nInstalled. Next build commands:\n'
-printf '  cd %s\n' "$lineage_root"
-printf '  source build/envsetup.sh\n'
-printf '  breakfast dipper\n'
-printf '  mka bacon\n'
+printf '  %s --lineage-root %s --jobs 2 --target bacon\n' \
+    "$script_dir/build-lineage-gentle.sh" "$lineage_root"

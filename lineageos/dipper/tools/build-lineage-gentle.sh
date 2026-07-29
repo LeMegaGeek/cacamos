@@ -12,6 +12,7 @@ reserve_cores=2
 cpu_set=""
 cpu_set_cores=0
 min_free_mem_mib=4096
+min_free_swap_mib=16384
 watchdog_interval_seconds=5
 go_memlimit_mib=12000
 
@@ -41,6 +42,9 @@ Options:
   --min-free-mem-mib N
                       Stop the build if MemAvailable drops below N MiB.
                       Default: 4096
+  --min-free-swap-mib N
+                      Stop the build if SwapFree drops below N MiB.
+                      Default: 16384
   --go-memlimit-mib N
                       GOMEMLIMIT for Soong/Go processes. Default: 12000
   --watchdog-interval N
@@ -109,6 +113,12 @@ while [[ $# -gt 0 ]]; do
             min_free_mem_mib="${2:-}"
             is_positive_integer "$min_free_mem_mib" ||
                 fail "--min-free-mem-mib expects a positive integer"
+            shift 2
+            ;;
+        --min-free-swap-mib)
+            min_free_swap_mib="${2:-}"
+            is_positive_integer "$min_free_swap_mib" ||
+                fail "--min-free-swap-mib expects a positive integer"
             shift 2
             ;;
         --watchdog-interval)
@@ -217,6 +227,7 @@ printf '  Build jobs:    %s\n' "$jobs"
 printf '  Reserve cores: %s\n' "$reserve_cores"
 printf '  Go mem limit:  %s MiB\n' "$go_memlimit_mib"
 printf '  Watchdog stop: %s MiB MemAvailable\n' "$min_free_mem_mib"
+printf '  Swap stop:     %s MiB SwapFree\n' "$min_free_swap_mib"
 printf '  Watchdog tick: %s seconds\n' "$watchdog_interval_seconds"
 if [[ "$existing_graph" -eq 1 ]]; then
     printf '  Build graph:    existing Ninja graph\n'
@@ -232,8 +243,8 @@ fi
 if [[ "$allow_low_memory" -ne 1 ]]; then
     (( mem_available_kib >= 8 * 1024 * 1024 )) ||
         fail "MemAvailable is below 8192 MiB; close applications or rerun with --allow-low-memory"
-    (( swap_free_kib >= 1024 * 1024 )) ||
-        fail "SwapFree is below 1024 MiB; close applications or rerun with --allow-low-memory"
+    (( swap_free_kib >= min_free_swap_mib * 1024 )) ||
+        fail "SwapFree is below the configured ${min_free_swap_mib} MiB floor"
 fi
 
 if [[ "$check_only" -eq 1 ]]; then
@@ -318,6 +329,14 @@ build_pid="$!"
         if (( current_mem_available_kib < min_free_mem_mib * 1024 )); then
             printf '\nERROR: MemAvailable dropped below %d MiB; stopping build to keep the desktop usable.\n' \
                 "$min_free_mem_mib" >&2
+            kill -TERM -- "-$build_pid" 2>/dev/null || true
+            kill "$build_pid" 2>/dev/null || true
+            exit 0
+        fi
+        current_swap_free_kib="$(mem_kib SwapFree)"
+        if (( current_swap_free_kib < min_free_swap_mib * 1024 )); then
+            printf '\nERROR: SwapFree dropped below %d MiB; stopping build before swap exhaustion.\n' \
+                "$min_free_swap_mib" >&2
             kill -TERM -- "-$build_pid" 2>/dev/null || true
             kill "$build_pid" 2>/dev/null || true
             exit 0

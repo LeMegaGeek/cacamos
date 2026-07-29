@@ -106,3 +106,26 @@ Status: complete.
 - Commit and push the reviewed CaCamOS sources to
   `https://github.com/LeMegaGeek/cacamos`: complete.
 - Publish the exact verified OTA and checksum as CaCamOS 0.7.0: complete.
+
+## Phase 7: Dedicated CaCamOS 1.0.0
+
+Status: complete.
+
+1. Replaced the general-purpose LineageOS user experience with the CaCamOS
+   boot identity and DeviceAsWebcam-only HOME.
+2. Removed the browser, gallery, music player, generic launcher, lock screen
+   and consumer setup flow.
+3. Retained authenticated wireless ADB maintenance while keeping the physical
+   cable UVC-only.
+4. Removed 360p and YUYV; qualified MJPEG 720p, 1024x576 and 1080p at 15 and
+   30 FPS.
+5. Added a valid MJPEG warmup frame before `STREAMON` to satisfy stock OBS's
+   first-frame deadline.
+6. Added bounded periodic UVC control-event draining to recover every rapid
+   stream close/reopen.
+7. Classified endpoint `ENODEV` and `ESHUTDOWN` as normal USB removal.
+8. Passed stock OBS, Chromium/WebRTC, GStreamer, VLC, 100 rapid reopens, a
+   sustained two-minute stream and five host USB resets.
+9. Built and signed incremental `1785337449` with ten of sixteen cores,
+   reserving six.
+10. Qualified and published the exact CaCamOS 1.0.0 OTA and checksum.

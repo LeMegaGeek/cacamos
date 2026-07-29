@@ -2,6 +2,33 @@
 
 Xiaomi Mi 8 (`dipper`) LineageOS integration for standard USB webcam mode.
 
+## 1.0.0
+
+- Converts the LineageOS-based MI8 build into a dedicated CaCamOS webcam
+  appliance with CaCamOS branding and DeviceAsWebcam as the only HOME.
+- Removes consumer applications and startup flows, disables the lock screen,
+  and opens the webcam preview automatically.
+- Keeps the physical cable UVC-only and restores authenticated ADB over Wi-Fi
+  without enabling open legacy TCP ADB.
+- Advertises MJPEG 1280x720, 1024x576 and 1920x1080 at 15 and 30 FPS only.
+- Adds an immediate valid black MJPEG warmup frame before camera startup and
+  UVC `STREAMON`, fixing stock OBS first-frame timeouts.
+- Polls and drains UVC control events every 66 milliseconds even when the old
+  MI8 kernel loses an `EPOLLPRI` edge.
+- Separates normal endpoint shutdown from camera failure when queueing returns
+  `ENODEV` or `ESHUTDOWN`.
+- Passes the physical appliance, standard-application, stock-OBS, rapid-reopen,
+  sustained-stream and host-reset qualification suites.
+
+Qualified OTA:
+
+```text
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.0-dipper.zip
+size=1068308344
+sha256=7ff904f2bd95bda315266ab7c40b5d1fa2c2a6a354c53c15ae0393761360e1ea
+build_incremental=1785337449
+```
+
 ## 0.2.0 - R13
 
 - Adds the verified R13 OTA with UVC-only cable policy, persistent
