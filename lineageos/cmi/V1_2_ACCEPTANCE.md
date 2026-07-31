@@ -11,6 +11,7 @@ Target: Xiaomi Mi 10 Pro (`cmi`), LineageOS 23.2 / Android 16.
 | Dedicated appliance product | `ro.cacamos.version=1.2.0`, appliance graph and cmi overlays in patch 0001 | Passed |
 | Reproducible source | Fourteen exact-base patches recreate all audited Android worktrees | Passed |
 | Source invariants | `tools/verify-source-tree.sh` | Passed |
+| Full OTA build | `lineage_cmi-ota.zip`, 1,423,215,042 bytes, SHA-256 `1584bb975ec0c496f9cb4c114ea77af688b7808b9bae1f422da604b88245e146` | Passed |
 | Standard USB video | UVC gadget, robust request pipeline and DeviceAsWebcam integration | Source passed; runtime pending |
 | Standard USB audio | UAC2 gadget plus Android microphone/speaker bridge | Source passed; runtime pending |
 | Windows interoperability | Physical test on the MI10 Pro | Pending |

@@ -26,6 +26,10 @@ Dedicated webcam OS source integration for LineageOS 23.2 / Android 16.
 
 - Every patch recreates the audited local Android worktrees exactly.
 - The complete source verifier passes for `cmi`.
+- The complete signed block OTA builds successfully and passes archive,
+  device-target, appliance-property and webcam-artifact verification. Its
+  SHA-256 is
+  `1584bb975ec0c496f9cb4c114ea77af688b7808b9bae1f422da604b88245e146`.
 - Physical MI10 Pro installation and standard Windows/Linux interoperability
   remain pending.
 
