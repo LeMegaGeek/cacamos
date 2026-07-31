@@ -1,8 +1,8 @@
 diff --git a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-index 9e6989c..2af2cec 100644
+index 9e6989c..1fb265c 100644
 --- a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 +++ b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-@@ -9,31 +9,52 @@
+@@ -9,31 +9,51 @@
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
      <uses-permission android:name="android.permission.CAMERA"/>
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
@@ -34,7 +34,6 @@ index 9e6989c..2af2cec 100644
              android:excludeFromRecents="true"
              android:screenOrientation="user"
              android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|smallestScreenSize"
-+            android:exported="true"
              android:label="@string/app_label"
 +            android:launchMode="singleTask"
              android:theme="@style/ActivityTheme"
