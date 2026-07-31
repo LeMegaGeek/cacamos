@@ -18,8 +18,7 @@ Workspace:
 - The complete CaCamOS source invariant verifier passes.
 - Product configuration reaches the Android Ninja build graph with the
   controlled ten-worker profile.
-- Standard Windows operation was confirmed by the user on the physical MI10
-  Pro.
+- Physical installation and Windows/Linux runtime qualification remain pending.
 
 ## Published Source Areas
 

@@ -101,8 +101,7 @@ aplay -l
 ```
 
 Windows, Teams, OBS and browsers should select CaCamOS through their normal
-camera and audio device menus. The physical MI10 Pro has been reported working
-on Windows with the standard host path.
+camera and audio device menus. Physical MI10 Pro qualification remains pending.
 
 ## Reproducibility
 

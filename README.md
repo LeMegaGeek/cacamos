@@ -23,9 +23,9 @@ The MI10 Pro port includes:
   and UAC2;
 - a reproducible fourteen-patch series and controlled ten-worker build profile.
 
-The physical MI10 Pro was reported working through the normal Windows camera
-path. Full source acceptance is recorded in
-[`lineageos/cmi/V1_2_ACCEPTANCE.md`](lineageos/cmi/V1_2_ACCEPTANCE.md).
+Source acceptance is recorded in
+[`lineageos/cmi/V1_2_ACCEPTANCE.md`](lineageos/cmi/V1_2_ACCEPTANCE.md). Physical
+MI10 Pro installation and Windows/Linux qualification are still in progress.
 
 ## Xiaomi Mi 8 Release
 

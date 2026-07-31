@@ -26,8 +26,8 @@ Dedicated webcam OS source integration for LineageOS 23.2 / Android 16.
 
 - Every patch recreates the audited local Android worktrees exactly.
 - The complete source verifier passes for `cmi`.
-- Standard Windows webcam interoperability was confirmed by the user on the
-  physical MI10 Pro.
+- Physical MI10 Pro installation and standard Windows/Linux interoperability
+  remain pending.
 
 ## Previous 0.5.3 Addon
 

@@ -15,7 +15,7 @@ Xiaomi Mi 10 Pro (`cmi`) on LineageOS 23.2 / Android 16.
 - MJPEG 1280x720, 1024x576 and 1920x1080 are advertised at 15 and 30 FPS.
 - The Snapdragon 865 port carries the robust asynchronous UVC pipeline and
   hardware JPEG path.
-- The user confirmed normal operation on Windows with the physical MI10 Pro.
+- Physical installation and host validation on the MI10 Pro are in progress.
 - The controlled build profile uses ten workers and reserves six host cores.
 
 Acceptance record: `lineageos/cmi/V1_2_ACCEPTANCE.md`.

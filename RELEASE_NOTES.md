@@ -18,8 +18,8 @@ Source addons for exposing supported Xiaomi phones as standard USB webcams.
   JPEG path and bidirectional 48 kHz USB audio established on the MI8.
 - Adds exact-base and live-worktree patch verification plus a controlled
   ten-worker build profile that reserves six of the host's sixteen cores.
-- Records the successful Windows interoperability test reported on the physical
-  Xiaomi Mi 10 Pro.
+- Publishes the source port before physical MI10 Pro installation and host
+  qualification; those runtime gates remain pending.
 
 ## 1.1.0
 

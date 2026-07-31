@@ -1,6 +1,6 @@
-# CaCamOS 1.2.0 MI10 Pro Acceptance
+# CaCamOS 1.2.0 MI10 Pro Acceptance Status
 
-Acceptance date: 2026-07-31
+Status date: 2026-07-31
 
 Target: Xiaomi Mi 10 Pro (`cmi`), LineageOS 23.2 / Android 16.
 
@@ -11,9 +11,9 @@ Target: Xiaomi Mi 10 Pro (`cmi`), LineageOS 23.2 / Android 16.
 | Dedicated appliance product | `ro.cacamos.version=1.2.0`, appliance graph and cmi overlays in patch 0001 | Passed |
 | Reproducible source | Fourteen exact-base patches recreate all audited Android worktrees | Passed |
 | Source invariants | `tools/verify-source-tree.sh` | Passed |
-| Standard USB video | UVC gadget, robust request pipeline and DeviceAsWebcam integration | Passed |
-| Standard USB audio | UAC2 gadget plus Android microphone/speaker bridge | Passed |
-| Windows interoperability | User test on the physical MI10 Pro | Passed |
+| Standard USB video | UVC gadget, robust request pipeline and DeviceAsWebcam integration | Source passed; runtime pending |
+| Standard USB audio | UAC2 gadget plus Android microphone/speaker bridge | Source passed; runtime pending |
+| Windows interoperability | Physical test on the MI10 Pro | Pending |
 | Controlled host resources | Ten-worker build profile, six reserved cores, memory watchdog | Passed |
 
 ## USB Behavior
