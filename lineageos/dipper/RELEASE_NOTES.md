@@ -2,6 +2,60 @@
 
 Xiaomi Mi 8 (`dipper`) LineageOS integration for standard USB webcam mode.
 
+## 1.1.0
+
+- Enables the MI8 kernel UAC2 gadget and binds it with UVC as one composite USB
+  device.
+- Advertises a mono 48 kHz/16-bit microphone and stereo 48 kHz/16-bit speaker
+  endpoint using standard Linux and Windows class drivers.
+- Bridges the built-in Android microphone to the gadget playback PCM and the
+  gadget capture PCM to the built-in Android speaker.
+- Uses nonblocking ALSA I/O, dynamic `UAC2Gadget` card discovery and bounded
+  reopen retries so cable and host reconnects do not stall DeviceAsWebcam.
+- Advertises the composite IAD class (`EF/02/01`) and an adaptive host
+  playback endpoint compatible with the built-in Windows UAC2 driver.
+- Adds microphone foreground-service declarations, fixed runtime permission
+  grants and narrowly scoped SELinux access to raw ALSA and Android audio
+  services.
+- Retains the standard UVC modes and the 1.0.1 return-to-webcam action.
+
+Qualified OTA. The final image passed physical video, microphone and speaker
+tests on Linux and Windows using the hosts' built-in USB class drivers. Linux
+qualification also covered all six advertised video modes with both audio
+directions active, ten repeated opens, five USB resets and a two-minute
+720p30 run.
+
+```text
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
+size=1068470898
+sha256=26c95ecf7ba4886b55f64bfae298b9f799c91fc8a2ee25476abc8f936f4879ca
+build_incremental=1785352812
+```
+
+## 1.0.1
+
+- Adds a CaCamOS-only action at the top of both Settings homepage variants:
+  **Return to webcam** / **Retour à la webcam**.
+- Reopens the existing DeviceAsWebcam HOME task with `CLEAR_TOP` and
+  `SINGLE_TOP`, preserving the running webcam process.
+- Clarifies the persistent notification so it is also an obvious route back
+  to the webcam preview.
+- Adds a physical regression script that opens Settings, locates and taps the
+  localized action, then verifies the preview, boot ID and webcam process.
+- Extends compiled-payload verification to require the new Settings controller
+  and explicit DeviceAsWebcam component.
+- Carries the previously external boot animation, boot probe, privileged
+  permission and Settings icon in the reproducible patches.
+
+Release OTA:
+
+```text
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.1-dipper.zip
+size=1068373381
+sha256=551ce99f6aebc766b7a16b086d533580b4416aeb3875071052cb1bb71217a2d8
+build_incremental=1785347654
+```
+
 ## 1.0.0
 
 - Converts the LineageOS-based MI8 build into a dedicated CaCamOS webcam

@@ -1,16 +1,95 @@
 diff --git a/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xiaomi/dipper.config b/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xiaomi/dipper.config
-index 1031c561a8d6..82e20adf22c1 100644
+index 1031c561a8d6301256ed91de38578fd84125307c..2377eb406557c1d914bfe2192245d801fe55da64 100644
 --- a/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xiaomi/dipper.config
 +++ b/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xiaomi/dipper.config
-@@ -12,5 +12,6 @@ CONFIG_TOUCHSCREEN_ST_FTS_V521=y
+@@ -12,5 +12,7 @@ CONFIG_TOUCHSCREEN_ST_FTS_V521=y
  CONFIG_USE_ROHM_BU64753=y
  CONFIG_FINGERPRINT_FPC_SCREEN_NOTIFY=y
  CONFIG_I2C_BY_DMA=y
++CONFIG_USB_CONFIGFS_F_UAC2=y
 +CONFIG_USB_CONFIGFS_F_UVC=y
  # CONFIG_TOUCHSCREEN_ATMEL_MXT_T37 is not set
  # CONFIG_TOUCHSCREEN_ST_DEBUG_FS is not set
+diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uac2.c b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uac2.c
+index e1ea4e50e899f9085933f5d5f4c868e53237b848..f056881ca5cf87b076673b7870ab63cf150ed2c7 100644
+--- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uac2.c
++++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uac2.c
+@@ -54,7 +54,7 @@
+ #define UNFLW_CTRL	8
+ #define OVFLW_CTRL	10
+ 
+-static bool enable_capture;
++static bool enable_capture = true;
+ module_param(enable_capture, bool, 0644);
+ MODULE_PARM_DESC(enable_capture, "Enable USB Peripheral speaker function");
+ 
+@@ -582,18 +582,18 @@ static char clksrc_in[8];
+ static char clksrc_out[8];
+ 
+ static struct usb_string strings_fn[] = {
+-	[STR_ASSOC].s = "Source/Sink",
+-	[STR_IF_CTRL].s = "Topology Control",
++	[STR_ASSOC].s = "CaCamOS Audio",
++	[STR_IF_CTRL].s = "CaCamOS Audio Control",
+ 	[STR_CLKSRC_IN].s = clksrc_in,
+ 	[STR_CLKSRC_OUT].s = clksrc_out,
+-	[STR_USB_IT].s = "USBH Out",
+-	[STR_IO_IT].s = "USBD Out",
+-	[STR_USB_OT].s = "USBH In",
+-	[STR_IO_OT].s = "USBD In",
+-	[STR_AS_OUT_ALT0].s = "Playback Inactive",
+-	[STR_AS_OUT_ALT1].s = "Playback Active",
+-	[STR_AS_IN_ALT0].s = "Capture Inactive",
+-	[STR_AS_IN_ALT1].s = "Capture Active",
++	[STR_USB_IT].s = "Computer Playback",
++	[STR_IO_IT].s = "CaCamOS Microphone",
++	[STR_USB_OT].s = "Computer Microphone",
++	[STR_IO_OT].s = "CaCamOS Speakers",
++	[STR_AS_OUT_ALT0].s = "CaCamOS Speakers Inactive",
++	[STR_AS_OUT_ALT1].s = "CaCamOS Speakers",
++	[STR_AS_IN_ALT0].s = "CaCamOS Microphone Inactive",
++	[STR_AS_IN_ALT1].s = "CaCamOS Microphone",
+ 	{ },
+ };
+ 
+@@ -675,7 +675,7 @@ static struct uac2_input_terminal_descriptor io_in_it_desc = {
+ 
+ 	.bDescriptorSubtype = UAC_INPUT_TERMINAL,
+ 	.bTerminalID = IO_IN_IT_ID,
+-	.wTerminalType = cpu_to_le16(UAC_INPUT_TERMINAL_UNDEFINED),
++	.wTerminalType = cpu_to_le16(UAC_INPUT_TERMINAL_MICROPHONE),
+ 	.bAssocTerminal = 0,
+ 	.bCSourceID = USB_IN_CLK_ID,
+ 	.iChannelNames = 0,
+@@ -703,7 +703,7 @@ static struct uac2_output_terminal_descriptor io_out_ot_desc = {
+ 
+ 	.bDescriptorSubtype = UAC_OUTPUT_TERMINAL,
+ 	.bTerminalID = IO_OUT_OT_ID,
+-	.wTerminalType = cpu_to_le16(UAC_OUTPUT_TERMINAL_UNDEFINED),
++	.wTerminalType = cpu_to_le16(UAC_OUTPUT_TERMINAL_SPEAKER),
+ 	.bAssocTerminal = 0,
+ 	.bSourceID = USB_OUT_IT_ID,
+ 	.bCSourceID = USB_OUT_CLK_ID,
+@@ -774,7 +774,7 @@ static struct usb_endpoint_descriptor fs_epout_desc = {
+ 	.bDescriptorType = USB_DT_ENDPOINT,
+ 
+ 	.bEndpointAddress = USB_DIR_OUT,
+-	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ASYNC,
++	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ADAPTIVE,
+ 	/* .wMaxPacketSize = DYNAMIC */
+ 	.bInterval = 1,
+ };
+@@ -783,7 +783,7 @@ static struct usb_endpoint_descriptor hs_epout_desc = {
+ 	.bLength = USB_DT_ENDPOINT_SIZE,
+ 	.bDescriptorType = USB_DT_ENDPOINT,
+ 
+-	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ASYNC,
++	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ADAPTIVE,
+ 	/* .wMaxPacketSize = DYNAMIC */
+ 	.bInterval = 4,
+ };
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.c b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.c
-index 650bcafa7e2a..99c6e04aea9e 100644
+index 650bcafa7e2a3ce7840c4cc4f183189ff53245d9..99c6e04aea9ec250297605a0cedc0bbe3d479e0f 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.c
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.c
 @@ -340,6 +340,11 @@ uvc_function_set_alt(struct usb_function *f, unsigned interface, unsigned alt)
@@ -82,7 +161,7 @@ index 650bcafa7e2a..99c6e04aea9e 100644
  
  	mutex_lock(&opts->lock);
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.h b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.h
-index d0a73bdcbba1..bc7d81df7d03 100644
+index d0a73bdcbba105acb6a2bb11322381ba00dc2f43..bc7d81df7d03ca5154b1f88b7c7de33e0e28ca00 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.h
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.h
 @@ -25,4 +25,3 @@ void uvc_function_connect(struct uvc_device *uvc);
@@ -90,8 +169,21 @@ index d0a73bdcbba1..bc7d81df7d03 100644
  
  #endif /* _F_UVC_H_ */
 -
+diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/u_uac2.h b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/u_uac2.h
+index f7d2d441f9da751c688b7af275db89ec940ceb06..d8eaf90b4308b1a3f96c0b962637a382e9488a62 100644
+--- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/u_uac2.h
++++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/u_uac2.h
+@@ -22,7 +22,7 @@
+ #define UAC2_DEF_PSRATE 48000
+ #define UAC2_DEF_PSSIZE 2
+ #define UAC2_DEF_CCHMASK 0x3
+-#define UAC2_DEF_CSRATE 44100
++#define UAC2_DEF_CSRATE 48000
+ #define UAC2_DEF_CSSIZE 2
+ 
+ struct f_uac2_opts {
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc.h b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc.h
-index d1649f8997db..521873ad752d 100644
+index d1649f8997db1ffd5f2628dded894fa488a45b0e..521873ad752d70f19219aaf1e7868327f741ba91 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc.h
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc.h
 @@ -14,8 +14,10 @@
@@ -198,7 +290,7 @@ index d1649f8997db..521873ad752d 100644
  #endif /* _UVC_GADGET_H_ */
 -
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.c b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.c
-index dadf6e507380..89dbb42aef64 100644
+index dadf6e5073801567b763276f25a8637b0d3d0638..89dbb42aef64d8270a93f551eb1e5650b067f894 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.c
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.c
 @@ -61,6 +61,7 @@ static int uvc_queue_setup(struct vb2_queue *vq,
@@ -293,7 +385,7 @@ index dadf6e507380..89dbb42aef64 100644
  }
 -
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.h b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.h
-index ac461a9a1a70..8d34dc178cec 100644
+index ac461a9a1a70661da55e5f8a01b7fbde6caaf826..8d34dc178cec2e122ff53623ffe4cf5c74d2a1d8 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.h
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.h
 @@ -33,6 +33,8 @@ struct uvc_buffer {
@@ -321,7 +413,7 @@ index ac461a9a1a70..8d34dc178cec 100644
  #endif /* _UVC_QUEUE_H_ */
 -
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_v4l2.c b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_v4l2.c
-index f4ccbd56f4d2..33f3d3070933 100644
+index f4ccbd56f4d254c42112f3ae89949aefe6d5c8d1..33f3d307093310e31ce0c1d37ad0df11bfb5645e 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_v4l2.c
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_v4l2.c
 @@ -14,6 +14,7 @@
@@ -478,7 +570,7 @@ index f4ccbd56f4d2..33f3d3070933 100644
  };
 -
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.c b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.c
-index 91fd78212488..3f589140652f 100644
+index 91fd7821248804b3662f2f2ae9168e3304a243c4..3f589140652f5c8d2b34d6bc16e1e58a3d0c708c 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.c
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.c
 @@ -13,6 +13,7 @@
@@ -1345,7 +1437,7 @@ index 91fd78212488..3f589140652f 100644
  }
 -
 diff --git a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.h b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.h
-index ef00f06fa00b..764064765782 100644
+index ef00f06fa00b4c55a0c3506f24c228af2554f57e..7640647657827fee8040e226e9a83650a92068ab 100644
 --- a/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.h
 +++ b/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.h
 @@ -15,10 +15,10 @@

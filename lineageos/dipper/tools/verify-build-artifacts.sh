@@ -2,6 +2,11 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cacamos_version="$(tr -d '\r\n' < "$script_dir/../VERSION")"
+[[ "$cacamos_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    printf 'FAIL: invalid CaCamOS version: %s\n' "$cacamos_version" >&2
+    exit 1
+}
 
 usage() {
     cat >&2 <<'EOF'
@@ -44,6 +49,7 @@ host_bin="$lineage_root/out/host/linux-x86/bin"
 target_files_dir="$product_out/obj/PACKAGING/target_files_intermediates/lineage_dipper-target_files"
 apk="$product_out/system/priv-app/DeviceAsWebcam/DeviceAsWebcam.apk"
 jni_lib="$product_out/system/lib64/libjni_deviceAsWebcam.so"
+tinyalsa_lib="$product_out/system/lib64/libtinyalsa.so"
 overlay_apk="$product_out/product/overlay/CaCamOsDeviceAsWebcamDipper.apk"
 adbd_capex="$product_out/system/apex/com.android.adbd.capex"
 kernel="$product_out/kernel"
@@ -51,12 +57,14 @@ kernel_vmlinux="$product_out/obj/KERNEL_OBJ/vmlinux"
 boot_image="$product_out/boot.img"
 staged_apk="$target_files_dir/SYSTEM/priv-app/DeviceAsWebcam/DeviceAsWebcam.apk"
 staged_jni_lib="$target_files_dir/SYSTEM/lib64/libjni_deviceAsWebcam.so"
+staged_tinyalsa_lib="$target_files_dir/SYSTEM/lib64/libtinyalsa.so"
 staged_overlay_apk="$target_files_dir/PRODUCT/overlay/CaCamOsDeviceAsWebcamDipper.apk"
 staged_adbd_capex="$target_files_dir/SYSTEM/apex/com.android.adbd.capex"
 staged_settings_apk="$target_files_dir/SYSTEM_EXT/priv-app/Settings/Settings.apk"
 staged_settings_provider_overlay="$target_files_dir/VENDOR/overlay/SettingsProvider__lineage_dipper__auto_generated_rro_vendor.apk"
 staged_system_build_prop="$target_files_dir/SYSTEM/build.prop"
 staged_product_build_prop="$target_files_dir/PRODUCT/etc/build.prop"
+staged_plat_sepolicy="$target_files_dir/SYSTEM/etc/selinux/plat_sepolicy.cil"
 bootanimation="$lineage_root/device/xiaomi/dipper/bootanimation/bootanimation.zip"
 staged_bootanimation="$target_files_dir/PRODUCT/media/bootanimation.zip"
 staged_kernel="$target_files_dir/BOOT/kernel"
@@ -64,11 +72,15 @@ staged_boot="$target_files_dir/IMAGES/boot.img"
 staged_recovery="$target_files_dir/RECOVERY/RAMDISK/system/bin/recovery"
 staged_recovery_prop="$target_files_dir/RECOVERY/RAMDISK/prop.default"
 staged_usb_init="$target_files_dir/VENDOR/etc/init/hw/init.qcom.usb.rc"
+staged_usb_gadget_hal="$target_files_dir/VENDOR/bin/hw/android.hardware.usb.gadget-service.qti"
+staged_usb_compositions="$target_files_dir/VENDOR/etc/usb_compositions.conf"
 staged_device_init="$target_files_dir/VENDOR/etc/init/hw/init.target.rc"
 boot_probe="$lineage_root/device/xiaomi/dipper/init/cacamos_boot_probe.sh"
 staged_boot_probe="$target_files_dir/SYSTEM/bin/cacamos_boot_probe.sh"
 privapp_permissions="$lineage_root/device/xiaomi/dipper/permissions/privapp-permissions-cacamos.xml"
 staged_privapp_permissions="$target_files_dir/SYSTEM/etc/permissions/privapp-permissions-cacamos.xml"
+default_permissions="$lineage_root/device/xiaomi/dipper/permissions/default-permissions-cacamos.xml"
+staged_default_permissions="$target_files_dir/SYSTEM/etc/default-permissions/default-permissions-cacamos.xml"
 system_init="$lineage_root/system/core/rootdir/init.rc"
 staged_system_init="$target_files_dir/SYSTEM/etc/init/hw/init.rc"
 platform_cert="$lineage_root/build/make/target/product/security/platform.x509.pem"
@@ -80,7 +92,7 @@ if [[ -z "$ota_path" ]]; then
 fi
 ota_path="$(readlink -f "$ota_path")"
 
-for command in python3 sha256sum unzip openssl cmp stat nm; do
+for command in python3 sha256sum unzip openssl cmp stat nm readelf; do
     require_cmd "$command"
 done
 for tool in aapt2 apksigner check_ota_package_signature deapexer debugfs_static fsck.erofs; do
@@ -90,6 +102,7 @@ for file in \
     "$ota_path" \
     "$apk" \
     "$jni_lib" \
+    "$tinyalsa_lib" \
     "$overlay_apk" \
     "$adbd_capex" \
     "$kernel" \
@@ -97,12 +110,14 @@ for file in \
     "$boot_image" \
     "$staged_apk" \
     "$staged_jni_lib" \
+    "$staged_tinyalsa_lib" \
     "$staged_overlay_apk" \
     "$staged_adbd_capex" \
     "$staged_settings_apk" \
     "$staged_settings_provider_overlay" \
     "$staged_system_build_prop" \
     "$staged_product_build_prop" \
+    "$staged_plat_sepolicy" \
     "$bootanimation" \
     "$staged_bootanimation" \
     "$staged_kernel" \
@@ -110,11 +125,15 @@ for file in \
     "$staged_recovery" \
     "$staged_recovery_prop" \
     "$staged_usb_init" \
+    "$staged_usb_gadget_hal" \
+    "$staged_usb_compositions" \
     "$staged_device_init" \
     "$boot_probe" \
     "$staged_boot_probe" \
     "$privapp_permissions" \
     "$staged_privapp_permissions" \
+    "$default_permissions" \
+    "$staged_default_permissions" \
     "$system_init" \
     "$staged_system_init" \
     "$platform_cert" \
@@ -138,15 +157,17 @@ for relative_source in "${critical_relative_sources[@]}"; do
 done
 
 ota_mtime="$(stat -c %Y "$ota_path")"
-for file in "${critical_sources[@]}" "$apk" "$jni_lib" "$overlay_apk" "$adbd_capex" "$kernel" \
+for file in "${critical_sources[@]}" "$apk" "$jni_lib" "$tinyalsa_lib" "$overlay_apk" "$adbd_capex" "$kernel" \
     "$kernel_vmlinux" \
-    "$boot_image" "$staged_apk" "$staged_jni_lib" "$staged_overlay_apk" \
+    "$boot_image" "$staged_apk" "$staged_jni_lib" "$staged_tinyalsa_lib" "$staged_overlay_apk" \
     "$staged_adbd_capex" "$staged_settings_apk" "$staged_settings_provider_overlay" \
     "$staged_system_build_prop" \
-    "$staged_product_build_prop" "$staged_kernel" "$staged_boot" "$staged_usb_init" \
+    "$staged_product_build_prop" "$staged_plat_sepolicy" "$staged_kernel" "$staged_boot" "$staged_usb_init" \
+    "$staged_usb_gadget_hal" "$staged_usb_compositions" \
     "$bootanimation" "$staged_bootanimation" \
     "$staged_recovery" "$staged_recovery_prop" "$staged_device_init" "$boot_probe" \
-    "$staged_boot_probe" "$privapp_permissions" "$staged_privapp_permissions" "$system_init" \
+    "$staged_boot_probe" "$privapp_permissions" "$staged_privapp_permissions" \
+    "$default_permissions" "$staged_default_permissions" "$system_init" \
     "$staged_system_init"; do
     require_file "$file"
     if (( $(stat -c %Y "$file") > ota_mtime )); then
@@ -159,6 +180,8 @@ cmp -s "$apk" "$staged_apk" ||
     fail "target-files contains a stale DeviceAsWebcam APK"
 cmp -s "$jni_lib" "$staged_jni_lib" ||
     fail "target-files contains a stale DeviceAsWebcam JNI library"
+cmp -s "$tinyalsa_lib" "$staged_tinyalsa_lib" ||
+    fail "target-files contains a stale tinyalsa runtime"
 cmp -s "$overlay_apk" "$staged_overlay_apk" ||
     fail "target-files contains a stale DeviceAsWebcam resource overlay"
 cmp -s "$adbd_capex" "$staged_adbd_capex" ||
@@ -171,6 +194,8 @@ cmp -s "$boot_probe" "$staged_boot_probe" ||
     fail "target-files contains a stale autonomous boot probe"
 cmp -s "$privapp_permissions" "$staged_privapp_permissions" ||
     fail "target-files contains a stale DeviceAsWebcam permission allowlist"
+cmp -s "$default_permissions" "$staged_default_permissions" ||
+    fail "target-files contains stale DeviceAsWebcam runtime grants"
 cmp -s "$bootanimation" "$staged_bootanimation" ||
     fail "target-files contains a stale or non-CaCamOS boot animation"
 grep -Fq \
@@ -193,14 +218,47 @@ grants = {node.get("name") for node in entries[0].findall("permission")}
 if grants != {"android.permission.WRITE_SECURE_SETTINGS"}:
     raise SystemExit(f"unexpected compiled DeviceAsWebcam grants: {sorted(grants)}")
 PY
+python3 - "$staged_default_permissions" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+entries = root.findall("exception")
+if len(entries) != 1 or entries[0].get("package") != "com.android.DeviceAsWebcam":
+    raise SystemExit("compiled DeviceAsWebcam runtime grants are invalid")
+grants = {
+    (node.get("name"), node.get("fixed"))
+    for node in entries[0].findall("permission")
+}
+expected = {
+    ("android.permission.CAMERA", "true"),
+    ("android.permission.RECORD_AUDIO", "true"),
+}
+if grants != expected:
+    raise SystemExit(f"unexpected compiled DeviceAsWebcam runtime grants: {sorted(grants)}")
+PY
 grep -aFq "Epoll_ctl DEL failed" "$staged_jni_lib" &&
     grep -aFq "Epoll_ctl ADD failed" "$staged_jni_lib" ||
     fail "compiled DeviceAsWebcam JNI library lacks the MI8 UVC epoll rearm"
+readelf -d "$staged_jni_lib" | grep -Fq "Shared library: [libtinyalsa.so]" ||
+    fail "compiled DeviceAsWebcam JNI library is not linked to tinyalsa"
+for marker in UAC2Gadget UAC2_Gadget CaCamUsbAudio; do
+    grep -aFq "$marker" "$staged_jni_lib" ||
+        fail "compiled DeviceAsWebcam JNI library lacks USB audio marker: $marker"
+done
+for service in audioserver_service mediametrics_service; do
+    grep -Fq \
+        "(allow device_as_webcam $service (service_manager (find)))" \
+        "$staged_plat_sepolicy" ||
+        fail "compiled DeviceAsWebcam policy cannot find $service"
+done
 
 grep -Fxq "ro.cacamos.appliance=true" "$staged_system_build_prop" ||
     fail "compiled system is not marked as a CaCamOS appliance"
-grep -Fxq "ro.cacamos.version=1.0.0" "$staged_system_build_prop" ||
-    fail "compiled system version is not CaCamOS 1.0.0"
+grep -Fxq "ro.cacamos.version=$cacamos_version" "$staged_system_build_prop" ||
+    fail "compiled system version is not CaCamOS $cacamos_version"
+grep -Fxq "ro.usb.audio_gadget.enabled=true" "$staged_system_build_prop" ||
+    fail "compiled system does not enable the USB audio gadget"
 grep -Fxq "ro.setupwizard.mode=DISABLED" "$staged_product_build_prop" ||
     fail "compiled product does not disable the setup wizard"
 grep -Fxq "ro.product.product.model=CaCamOS MI 8 Webcam" \
@@ -277,7 +335,7 @@ remaining = sorted(
 if remaining:
     raise SystemExit(f"NFC files remain in appliance target-files: {remaining}")
 PY
-ok "target-files identifies CaCamOS 1.0.0 and contains only its appliance UI"
+ok "target-files identifies CaCamOS $cacamos_version and contains only its appliance UI"
 
 python3 - "$staged_bootanimation" <<'PY'
 import struct
@@ -322,6 +380,12 @@ text = pathlib.Path(sys.argv[1]).read_text()
 for identity in (
     'configuration "CaCamOS UVC"',
     'function_name "CaCamOS Webcam"',
+    "/config/usb_gadget/g1/functions/uac2.0/p_chmask 1",
+    "/config/usb_gadget/g1/functions/uac2.0/p_srate 48000",
+    "/config/usb_gadget/g1/functions/uac2.0/p_ssize 2",
+    "/config/usb_gadget/g1/functions/uac2.0/c_chmask 3",
+    "/config/usb_gadget/g1/functions/uac2.0/c_srate 48000",
+    "/config/usb_gadget/g1/functions/uac2.0/c_ssize 2",
 ):
     if identity not in text:
         raise SystemExit(f"staged USB identity is missing: {identity}")
@@ -372,6 +436,18 @@ if (
 ) not in text:
     raise SystemExit("staged high-speed UVC header does not expose MJPEG")
 PY
+for marker in \
+    ro.usb.audio_gadget.enabled \
+    'Adding CaCamOS UAC2 microphone and speaker' \
+    'Unable to set the CaCamOS composite USB device class' \
+    uac2.0 \
+    'uvc,uac2' \
+    'uvc,uac2,adb'; do
+    grep -aFqi "$marker" "$staged_usb_gadget_hal" ||
+        fail "compiled USB gadget HAL lacks composite-audio marker: $marker"
+done
+grep -Fq $'uvc,uac2\t' "$staged_usb_compositions" ||
+    fail "compiled USB compositions omit UVC plus UAC2"
 if grep -Fq "vendor.sys.usb.adb.disabled" "$staged_device_init"; then
     fail "staged dipper init still contains the obsolete USB-ADB property workaround"
 fi
@@ -392,11 +468,12 @@ for option in \
     CONFIG_MEDIA_SUPPORT=y \
     CONFIG_USB_GADGET=y \
     CONFIG_USB_CONFIGFS=y \
+    CONFIG_USB_CONFIGFS_F_UAC2=y \
     CONFIG_USB_CONFIGFS_F_UVC=y; do
     grep -Fxq "$option" "$kernel_config_file" ||
         fail "compiled kernel is missing $option"
 done
-ok "compiled kernel contains the required UVC gadget configuration"
+ok "compiled kernel contains the required UVC and UAC2 gadget configuration"
 python3 - "$kernel" <<'PY'
 import pathlib
 import sys
@@ -419,8 +496,67 @@ if b"uvcvideo: failed to prioritize USB submit worker" not in image:
     raise SystemExit("compiled kernel lacks real-time UVC request submission")
 if b"aborted incomplete frame" in image:
     raise SystemExit("compiled kernel still contains the freeze-inducing UVC frame abort")
+for marker in (
+    b"UAC2_Gadget",
+    b"CaCamOS Audio",
+    b"CaCamOS Microphone",
+    b"CaCamOS Speakers",
+):
+    if marker not in image:
+        raise SystemExit(f"compiled kernel lacks {marker.decode()}")
 PY
-ok "compiled kernel contains the real-time frame-paced isochronous request flow"
+ok "compiled kernel contains UAC2 audio and the frame-paced UVC request flow"
+for descriptor in fs_epout_desc hs_epout_desc; do
+    descriptor_address="$(
+        nm "$kernel_vmlinux" |
+            awk -v symbol="$descriptor" \
+                '$3 == symbol && !found { print $1; found = 1 }'
+    )"
+    [[ -n "$descriptor_address" ]] ||
+        fail "compiled kernel lacks UAC2 descriptor: $descriptor"
+    python3 - "$kernel_vmlinux" "$descriptor_address" "$descriptor" <<'PY'
+import pathlib
+import struct
+import sys
+
+path = pathlib.Path(sys.argv[1])
+address = int(sys.argv[2], 16)
+symbol = sys.argv[3]
+data = path.read_bytes()
+
+if data[:6] != b"\x7fELF\x02\x01":
+    raise SystemExit(f"{path} is not a little-endian ELF64 image")
+
+header = struct.unpack_from("<16sHHIQQQIHHHHHH", data)
+section_offset = header[6]
+section_size = header[11]
+section_count = header[12]
+file_offset = None
+for index in range(section_count):
+    section = struct.unpack_from(
+        "<IIQQQQIIQQ", data, section_offset + index * section_size
+    )
+    virtual_address = section[3]
+    offset = section[4]
+    size = section[5]
+    if virtual_address <= address < virtual_address + size:
+        file_offset = offset + address - virtual_address
+        break
+
+if file_offset is None:
+    raise SystemExit(f"cannot map {symbol} at 0x{address:x} into the ELF image")
+
+descriptor = data[file_offset : file_offset + 9]
+if len(descriptor) != 9 or descriptor[0] != 7 or descriptor[1] != 5:
+    raise SystemExit(f"{symbol} is not a USB endpoint descriptor: {descriptor.hex()}")
+if descriptor[3] & 0x0C != 0x08:
+    raise SystemExit(
+        f"{symbol} synchronization bits are 0x{descriptor[3] & 0x0C:02x}, "
+        "expected adaptive 0x08"
+    )
+PY
+done
+ok "compiled UAC2 host playback endpoint is adaptive at every USB speed"
 for symbol in uvcg_complete_buffer uvcg_video_prep_requests uvcg_video_hw_submit; do
     nm "$kernel_vmlinux" |
         awk -v symbol="$symbol" '$3 == symbol { found = 1 } END { exit !found }' ||
@@ -441,10 +577,10 @@ ok "compiled kernel retains buffers and submits requests outside completion cont
     "$adbd_apex_dir/com.android.adbd.apex" \
     "$adbd_apex_dir/extracted"
 require_file "$adbd_apex_dir/extracted/bin/adbd"
-grep -aFq "USB FunctionFS transport disabled by CaCamOS UVC-only policy" \
+grep -aFq "USB FunctionFS transport disabled by CaCamOS USB AV-only policy" \
     "$adbd_apex_dir/extracted/bin/adbd" ||
     fail "compiled adbd does not suppress its USB transport in CaCamOS"
-ok "compiled adbd keeps the cable UVC-only while retaining network transports"
+ok "compiled adbd keeps the cable audio/video-only while retaining network transports"
 
 "$host_bin/apksigner" verify --verbose --print-certs "$apk" >"$apk_verify_log"
 grep -Fq "Verifies" "$apk_verify_log" || fail "DeviceAsWebcam APK signature is invalid"
@@ -473,6 +609,11 @@ for marker in (
     b"controller-stop-failed generation=",
     b"controller-destroy-failed generation=",
     b"isUserUnlocked",
+    b"CaCamUsbMicrophone",
+    b"CaCamUsbSpeakers",
+    b"ro.usb.audio_gadget.enabled",
+    b"Telephone microphone capture active",
+    b"Telephone speaker playback active",
     b"/cache/recovery/cacamos-boot-state.log",
 ):
     if marker not in dex:
@@ -494,6 +635,10 @@ with zipfile.ZipFile(path) as archive:
     )
 if b"isUsbAdbDisabledByProduct" not in dex:
     raise SystemExit("compiled Settings APK still exposes appliance USB debugging")
+if b"CaCamOsWebcamPreferenceController" not in dex:
+    raise SystemExit("compiled Settings APK lacks the CaCamOS webcam return action")
+if b"com.android.deviceaswebcam.DeviceAsWebcamPreview" not in dex:
+    raise SystemExit("compiled Settings APK targets no CaCamOS webcam activity")
 PY
 ok "compiled credential-safe startup, recovery, FPS pacing and maintenance policy"
 
@@ -523,6 +668,8 @@ expected = {
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.CAMERA",
     "android.permission.FOREGROUND_SERVICE_CAMERA",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.WRITE_SECURE_SETTINGS",
     "android.permission.POST_NOTIFICATIONS",
@@ -557,8 +704,8 @@ grep -Eq 'launchMode\([^)]*\)=2' "$apk_xmltree" ||
 direct_boot_count="$(grep -Fc 'directBootAware(0x01010505)=true' "$apk_xmltree")"
 (( direct_boot_count >= 3 )) ||
     fail "receiver, activity and service are not all direct-boot aware"
-grep -Fq 'foregroundServiceType(0x01010599)=0x00000040' "$apk_xmltree" ||
-    fail "compiled service is not declared as a camera foreground service"
+grep -Fq 'foregroundServiceType(0x01010599)=0x000000c0' "$apk_xmltree" ||
+    fail "compiled service is not declared as camera and microphone foreground service"
 ok "platform-signed persistent HOME APK and audited compiled permission set"
 
 unzip -tq "$ota_path"

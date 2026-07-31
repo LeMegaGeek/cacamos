@@ -1,5 +1,76 @@
+diff --git a/packages/apps/Settings/res/values-fr/strings.xml b/packages/apps/Settings/res/values-fr/strings.xml
+index 39aabe7cf1cae3a80a624a25b1531268a97b68a7..22e7766a3553aac73aff63e47ce0fcd3ec4af456 100644
+--- a/packages/apps/Settings/res/values-fr/strings.xml
++++ b/packages/apps/Settings/res/values-fr/strings.xml
+@@ -16,6 +16,8 @@
+ 
+ <resources xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
++    <string name="cacamos_return_to_webcam_title">"Retour à la webcam"</string>
++    <string name="cacamos_return_to_webcam_summary">"Ouvrir la caméra CaCamOS"</string>
+     <string name="yes" msgid="1999566976857398962">"Oui"</string>
+     <string name="no" msgid="5541738710521607130">"Non"</string>
+     <string name="create" msgid="986997212165228751">"Créer"</string>
+diff --git a/packages/apps/Settings/res/values/strings.xml b/packages/apps/Settings/res/values/strings.xml
+index dab6996b21cc2da42bca3fec3fde206b2b9b4cd3..73f5b13e1d70d711688ac52fc796dda33f3d281c 100644
+--- a/packages/apps/Settings/res/values/strings.xml
++++ b/packages/apps/Settings/res/values/strings.xml
+@@ -14,6 +14,10 @@
+      limitations under the License.
+ -->
+ <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
++    <!-- CaCamOS appliance action shown at the top of Settings. -->
++    <string name="cacamos_return_to_webcam_title">Return to webcam</string>
++    <string name="cacamos_return_to_webcam_summary">Open the CaCamOS camera preview</string>
++
+     <!-- Strings for Dialog yes button -->
+     <string name="yes">"Yes"</string>
+     <!-- Strings for Dialog no button -->
+diff --git a/packages/apps/Settings/res/xml/top_level_settings.xml b/packages/apps/Settings/res/xml/top_level_settings.xml
+index 44fe7fcc3d3a611f0910a276085ebbe655778d99..0f859e0dbf1ce0da221d6293d9ad24cb635654cb 100644
+--- a/packages/apps/Settings/res/xml/top_level_settings.xml
++++ b/packages/apps/Settings/res/xml/top_level_settings.xml
+@@ -20,6 +20,14 @@
+     xmlns:settings="http://schemas.android.com/apk/res-auto"
+     android:key="top_level_settings">
+ 
++    <com.android.settings.widget.HomepagePreference
++        android:icon="@drawable/ic_settings_camera"
++        android:key="top_level_cacamos_webcam"
++        android:order="-1000"
++        android:title="@string/cacamos_return_to_webcam_title"
++        android:summary="@string/cacamos_return_to_webcam_summary"
++        settings:controller="com.android.settings.homepage.CaCamOsWebcamPreferenceController"/>
++
+     <com.android.settings.widget.HomepagePreference
+         android:fragment="com.android.settings.network.NetworkDashboardFragment"
+         android:icon="@drawable/ic_settings_wireless"
+diff --git a/packages/apps/Settings/res/xml/top_level_settings_v2.xml b/packages/apps/Settings/res/xml/top_level_settings_v2.xml
+index b1979531695d7b8d0cd780b896ced452a8a13d4b..862bdb5ec6c8f53f8b3a24fa51f49bba41ce0ff2 100644
+--- a/packages/apps/Settings/res/xml/top_level_settings_v2.xml
++++ b/packages/apps/Settings/res/xml/top_level_settings_v2.xml
+@@ -20,6 +20,19 @@
+     xmlns:settings="http://schemas.android.com/apk/res-auto"
+     android:key="top_level_settings">
+ 
++    <PreferenceCategory
++        android:order="-1000"
++        android:key="top_level_cacamos_category"
++        android:layout="@layout/settingslib_preference_category_no_title">
++        <com.android.settings.widget.HomepagePreference
++            android:icon="@drawable/ic_settings_camera"
++            android:key="top_level_cacamos_webcam"
++            android:order="-10"
++            android:title="@string/cacamos_return_to_webcam_title"
++            android:summary="@string/cacamos_return_to_webcam_summary"
++            settings:controller="com.android.settings.homepage.CaCamOsWebcamPreferenceController"/>
++    </PreferenceCategory>
++
+     <PreferenceCategory
+         android:order="-130"
+         android:key="top_level_connectivity_category"
 diff --git a/packages/apps/Settings/src/com/android/settings/development/AdbPreferenceController.java b/packages/apps/Settings/src/com/android/settings/development/AdbPreferenceController.java
-index 629dea17149..1a1e484c1df 100644
+index 629dea171493849f49142f7ad45f16bd6b1787ee..1a1e484c1df48f9e6f1390fa4d4a81d900ac6008 100644
 --- a/packages/apps/Settings/src/com/android/settings/development/AdbPreferenceController.java
 +++ b/packages/apps/Settings/src/com/android/settings/development/AdbPreferenceController.java
 @@ -20,6 +20,7 @@ package com.android.settings.development;
@@ -29,7 +100,7 @@ index 629dea17149..1a1e484c1df 100644
          writeAdbSetting(true);
      }
 diff --git a/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java b/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java
-index d4e4fc78a12..69e5de7a335 100644
+index d4e4fc78a12eb3e21202f0716b6dc32a92784fc2..69e5de7a335d725012a00aaf822a40db27bed2d5 100644
 --- a/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java
 +++ b/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java
 @@ -120,9 +120,15 @@ public class WirelessDebuggingEnabler implements SwitchWidgetController.OnSwitch
@@ -49,8 +120,76 @@ index d4e4fc78a12..69e5de7a335 100644
              // No connected Wi-Fi network. Reset the switch to off.
              Toast.makeText(mContext, com.android.settingslib.R.string.adb_wireless_no_network_msg,
                              Toast.LENGTH_LONG)
+diff --git a/packages/apps/Settings/src/com/android/settings/homepage/CaCamOsWebcamPreferenceController.java b/packages/apps/Settings/src/com/android/settings/homepage/CaCamOsWebcamPreferenceController.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..48ffa40aa90af85fdf23d847da876f7337636b16
+--- /dev/null
++++ b/packages/apps/Settings/src/com/android/settings/homepage/CaCamOsWebcamPreferenceController.java
+@@ -0,0 +1,62 @@
++/*
++ * Copyright (C) 2026 The CaCamOS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.settings.homepage;
++
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.Intent;
++import android.os.SystemProperties;
++import android.text.TextUtils;
++
++import androidx.preference.Preference;
++
++import com.android.settings.core.BasePreferenceController;
++
++/** Returns from the CaCamOS maintenance settings to the dedicated webcam UI. */
++public class CaCamOsWebcamPreferenceController extends BasePreferenceController {
++    static final String CACAMOS_APPLIANCE_PROPERTY = "ro.cacamos.appliance";
++    static final ComponentName WEBCAM_COMPONENT = new ComponentName(
++            "com.android.DeviceAsWebcam",
++            "com.android.deviceaswebcam.DeviceAsWebcamPreview");
++
++    public CaCamOsWebcamPreferenceController(Context context, String preferenceKey) {
++        super(context, preferenceKey);
++    }
++
++    @Override
++    public int getAvailabilityStatus() {
++        return SystemProperties.getBoolean(CACAMOS_APPLIANCE_PROPERTY, false)
++                ? AVAILABLE : UNSUPPORTED_ON_DEVICE;
++    }
++
++    @Override
++    public boolean handlePreferenceTreeClick(Preference preference) {
++        if (preference == null
++                || !TextUtils.equals(preference.getKey(), getPreferenceKey())) {
++            return false;
++        }
++
++        Intent intent = new Intent(Intent.ACTION_MAIN)
++                .addCategory(Intent.CATEGORY_HOME)
++                .setComponent(WEBCAM_COMPONENT)
++                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
++                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
++                        | Intent.FLAG_ACTIVITY_SINGLE_TOP);
++        mContext.startActivity(intent);
++        return true;
++    }
++}
 diff --git a/packages/apps/Settings/tests/robotests/src/com/android/settings/development/AdbPreferenceControllerTest.java b/packages/apps/Settings/tests/robotests/src/com/android/settings/development/AdbPreferenceControllerTest.java
-index ba9a7aa7a13..0c3fc66cedf 100644
+index ba9a7aa7a1348b376d0c928f55dd4734f55eac8c..0c3fc66cedf08107c787cd8dc275b1cb32bfa689 100644
 --- a/packages/apps/Settings/tests/robotests/src/com/android/settings/development/AdbPreferenceControllerTest.java
 +++ b/packages/apps/Settings/tests/robotests/src/com/android/settings/development/AdbPreferenceControllerTest.java
 @@ -20,6 +20,7 @@ import static com.google.common.truth.Truth.assertThat;
@@ -75,7 +214,7 @@ index ba9a7aa7a13..0c3fc66cedf 100644
 +    }
  }
 diff --git a/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java b/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java
-index 14c0bc72ff1..d460942a5ee 100644
+index 14c0bc72ff16e7b84bce608e61b8e6a946028558..d460942a5eeee7a80007dd624164ade35eee23cb 100644
 --- a/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java
 +++ b/packages/apps/Settings/tests/robotests/src/com/android/settings/development/WirelessDebuggingEnablerTest.java
 @@ -18,6 +18,7 @@ package com.android.settings.development;
@@ -107,3 +246,101 @@ index 14c0bc72ff1..d460942a5ee 100644
      @Test
      public void onSwitchToggled_false_wifiConnected_shouldSetAdbWifiEnabledFalse() {
          ShadowWirelessDebuggingPreferenceController.setIsWifiConnected(true);
+diff --git a/packages/apps/Settings/tests/robotests/src/com/android/settings/homepage/CaCamOsWebcamPreferenceControllerTest.java b/packages/apps/Settings/tests/robotests/src/com/android/settings/homepage/CaCamOsWebcamPreferenceControllerTest.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..92b6db599f12e629f89e14384129a298ac515f5d
+--- /dev/null
++++ b/packages/apps/Settings/tests/robotests/src/com/android/settings/homepage/CaCamOsWebcamPreferenceControllerTest.java
+@@ -0,0 +1,92 @@
++/*
++ * Copyright (C) 2026 The CaCamOS Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.settings.homepage;
++
++import static com.android.settings.core.BasePreferenceController.AVAILABLE;
++import static com.android.settings.core.BasePreferenceController.UNSUPPORTED_ON_DEVICE;
++
++import static com.google.common.truth.Truth.assertThat;
++
++import android.app.Application;
++import android.content.Context;
++import android.content.Intent;
++
++import androidx.preference.Preference;
++
++import org.junit.Before;
++import org.junit.Test;
++import org.junit.runner.RunWith;
++import org.robolectric.RobolectricTestRunner;
++import org.robolectric.RuntimeEnvironment;
++import org.robolectric.Shadows;
++import org.robolectric.shadows.ShadowSystemProperties;
++
++@RunWith(RobolectricTestRunner.class)
++public class CaCamOsWebcamPreferenceControllerTest {
++    private static final String KEY = "top_level_cacamos_webcam";
++
++    private Context mContext;
++    private CaCamOsWebcamPreferenceController mController;
++    private Preference mPreference;
++
++    @Before
++    public void setUp() {
++        mContext = RuntimeEnvironment.getApplication();
++        mController = new CaCamOsWebcamPreferenceController(mContext, KEY);
++        mPreference = new Preference(mContext);
++        mPreference.setKey(KEY);
++    }
++
++    @Test
++    public void getAvailabilityStatus_notCaCamOs_isUnsupported() {
++        ShadowSystemProperties.override(
++                CaCamOsWebcamPreferenceController.CACAMOS_APPLIANCE_PROPERTY, "false");
++
++        assertThat(mController.getAvailabilityStatus()).isEqualTo(UNSUPPORTED_ON_DEVICE);
++    }
++
++    @Test
++    public void getAvailabilityStatus_cacamOs_isAvailable() {
++        ShadowSystemProperties.override(
++                CaCamOsWebcamPreferenceController.CACAMOS_APPLIANCE_PROPERTY, "true");
++
++        assertThat(mController.getAvailabilityStatus()).isEqualTo(AVAILABLE);
++    }
++
++    @Test
++    public void handlePreferenceTreeClick_wrongPreference_doesNothing() {
++        Preference otherPreference = new Preference(mContext);
++        otherPreference.setKey("other");
++
++        assertThat(mController.handlePreferenceTreeClick(otherPreference)).isFalse();
++    }
++
++    @Test
++    public void handlePreferenceTreeClick_opensWebcamTask() {
++        assertThat(mController.handlePreferenceTreeClick(mPreference)).isTrue();
++
++        Intent intent = Shadows.shadowOf((Application) mContext).getNextStartedActivity();
++        assertThat(intent.getComponent())
++                .isEqualTo(CaCamOsWebcamPreferenceController.WEBCAM_COMPONENT);
++        assertThat(intent.getAction()).isEqualTo(Intent.ACTION_MAIN);
++        assertThat(intent.getCategories()).contains(Intent.CATEGORY_HOME);
++        int expectedFlags = Intent.FLAG_ACTIVITY_NEW_TASK
++                | Intent.FLAG_ACTIVITY_CLEAR_TOP
++                | Intent.FLAG_ACTIVITY_SINGLE_TOP;
++        assertThat(intent.getFlags() & expectedFlags).isEqualTo(expectedFlags);
++    }
++}

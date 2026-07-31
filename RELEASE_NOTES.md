@@ -2,6 +2,67 @@
 
 Source addons for exposing supported Xiaomi phones as standard USB webcams.
 
+## 1.1.0
+
+- Extends the standard UVC webcam into a standard USB Audio Class 2 composite
+  device, without BGOBS or host software.
+- Exposes the Xiaomi Mi 8 microphone to Linux and Windows as **CaCamOS
+  Microphone**, mono PCM at 48 kHz and 16 bits.
+- Exposes the Xiaomi Mi 8 speakers as **CaCamOS Speakers**, accepting stereo
+  PCM playback from Linux and Windows at 48 kHz and 16 bits.
+- Keeps video, microphone and speaker functions on the same physical USB
+  cable while retaining authenticated maintenance ADB over Wi-Fi.
+- Adds a self-healing Android/tinyalsa bridge which survives USB removal,
+  host stream closure and gadget re-enumeration without blocking the webcam
+  service.
+- Uses the standard composite IAD device class and an adaptive USB audio OUT
+  endpoint so Windows can bind its built-in video and Audio Class 2 drivers
+  without a CaCamOS host driver.
+- Grants camera and microphone access as fixed appliance permissions and
+  limits raw ALSA access to the dedicated DeviceAsWebcam SELinux domain.
+- Handles the ALSA-sanitized `UAC2Gadget` card ID and grants the webcam domain
+  access to Android's audio services, allowing the bridge to carry real audio.
+- Includes the 1.0.1 Settings-to-webcam navigation improvement.
+
+Qualified OTA. The final image passed physical video, microphone and speaker
+tests on Linux and Windows using the hosts' built-in USB class drivers. Linux
+qualification also covered all six advertised video modes with both audio
+directions active, ten repeated opens, five USB resets and a two-minute
+720p30 run.
+
+```text
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
+size=1068470898
+sha256=26c95ecf7ba4886b55f64bfae298b9f799c91fc8a2ee25476abc8f936f4879ca
+build_incremental=1785352812
+```
+
+## 1.0.1
+
+- Adds a prominent **Return to webcam** action at the top of Settings, with
+  French and English labels, so maintenance no longer leaves the user hunting
+  for the dedicated camera interface.
+- Returns to the existing DeviceAsWebcam task in one tap without restarting
+  the phone or webcam process.
+- Makes the persistent webcam notification explicitly say that tapping it
+  returns to the webcam.
+- Adds source, compiled-artifact and physical UI regression gates for the
+  Settings-to-webcam path.
+- Includes the CaCamOS boot animation, boot probe and privileged permission
+  file in the reproducible patch series instead of relying on out-of-tree
+  workspace files.
+- Retains the complete standard-UVC behavior and physical qualification of
+  1.0.0.
+
+Release OTA:
+
+```text
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.1-dipper.zip
+size=1068373381
+sha256=551ce99f6aebc766b7a16b086d533580b4416aeb3875071052cb1bb71217a2d8
+build_incremental=1785347654
+```
+
 ## 1.0.0
 
 - Delivers the first dedicated CaCamOS appliance for the Xiaomi Mi 8:

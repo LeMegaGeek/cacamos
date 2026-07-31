@@ -10,19 +10,69 @@ index b87b31916ced0cb560f4ac0dd76d6803f90692ea..3044ab0badf647f62f43d191dedc79c3
  set_prop(adbd, ffs_control_prop)
  set_prop(adbd, adbd_tradeinmode_prop)
  
+diff --git a/system/sepolicy/private/app.te b/system/sepolicy/private/app.te
+index b9a6d85e8811fda388abed8352b5397cedb8d4ba..e739dacadab4ec9f2a314e3ebe320385297999c7 100644
+--- a/system/sepolicy/private/app.te
++++ b/system/sepolicy/private/app.te
+@@ -742,8 +742,12 @@ neverallow {
+ }:file no_x_file_perms;
+ 
+ # Don't allow apps access to any of the following character devices.
++neverallow {
++    appdomain
++    -device_as_webcam
++} audio_device:chr_file { read write };
++
+ neverallow appdomain {
+-    audio_device
+     camera_device
+     dm_device
+     radio_device
 diff --git a/system/sepolicy/private/device_as_webcam.te b/system/sepolicy/private/device_as_webcam.te
-index 98c91c2f9a9544e0a458fdf5bda7b4233b3b7c1b..d79d3d708aa557e64f9e6e0c1a8ca4f94a9d9868 100644
+index 98c91c2f9a9544e0a458fdf5bda7b4233b3b7c1b..c07a9ae2232fa2256c137374b5d032820baaf784 100644
 --- a/system/sepolicy/private/device_as_webcam.te
 +++ b/system/sepolicy/private/device_as_webcam.te
-@@ -19,3 +19,8 @@ allow device_as_webcam device:dir r_dir_perms;
+@@ -6,7 +6,12 @@ app_domain(device_as_webcam)
+ allow device_as_webcam system_app_data_file:dir create_dir_perms;
+ allow device_as_webcam system_app_data_file:file create_file_perms;
+ 
+-allow device_as_webcam { app_api_service cameraserver_service }:service_manager find;
++allow device_as_webcam {
++    app_api_service
++    audioserver_service
++    cameraserver_service
++    mediametrics_service
++}:service_manager find;
+ 
+ # Allow DeviceAsWebcam Service needs to access ro.usb.uvc.enabled property to
+ # enale/disable itself
+@@ -19,3 +24,14 @@ allow device_as_webcam device:dir r_dir_perms;
  # be accessed by the DeviceAsWebcam Service.
  allow device_as_webcam video_device:dir r_dir_perms;
  allow device_as_webcam video_device:chr_file rw_file_perms;
++
++# CaCamOS bridges the Android microphone and speakers to the dedicated UAC2
++# gadget card. No other application domain receives raw ALSA access.
++r_dir_file(device_as_webcam, proc_asound)
++allow device_as_webcam audio_device:dir r_dir_perms;
++allow device_as_webcam audio_device:chr_file rw_file_perms;
 +
 +# CaCamOS keeps a bounded startup trace in the recovery-readable cache.
 +allow device_as_webcam cache_file:dir search;
 +allow device_as_webcam cache_recovery_file:dir rw_dir_perms;
 +allow device_as_webcam cache_recovery_file:file create_file_perms;
+diff --git a/system/sepolicy/private/property_contexts b/system/sepolicy/private/property_contexts
+index f07e2ea4cc3a1d342c802e11c3cd44a6ebecfdd0..da7bf6f0de203ccaf6e883f33e2b6b4aa129b8ea 100644
+--- a/system/sepolicy/private/property_contexts
++++ b/system/sepolicy/private/property_contexts
+@@ -1742,6 +1742,7 @@ vibrator.adaptive_haptics.enabled u:object_r:adaptive_haptics_prop:s0 exact stri
+ 
+ # UVC Gadget property
+ ro.usb.uvc.enabled      u:object_r:usb_uvc_enabled_prop:s0 exact bool
++ro.usb.audio_gadget.enabled u:object_r:usb_uvc_enabled_prop:s0 exact bool
+ 
+ # System UI notification properties
+ persist.sysui.notification.ranking_update_ashmem u:object_r:persist_sysui_ranking_update_prop:s0 exact bool
 diff --git a/system/sepolicy/private/system_server.te b/system/sepolicy/private/system_server.te
 index 01097f2b1a14e7b66b85163df607591170a85c5d..a4be72ca1789be16227b4f17f5e3d1c6f28d202c 100644
 --- a/system/sepolicy/private/system_server.te

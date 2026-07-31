@@ -2,7 +2,7 @@
 set -euo pipefail
 
 vendor_id="${CACAMOS_USB_VENDOR_ID:-18d1}"
-product_id="${CACAMOS_USB_PRODUCT_ID:-4eed}"
+product_id="${CACAMOS_USB_PRODUCT_ID:-4eef}"
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2

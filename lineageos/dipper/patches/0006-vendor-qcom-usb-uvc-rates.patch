@@ -1,5 +1,5 @@
 diff --git a/vendor/qcom/opensource/usb/etc/init.qcom.usb.rc b/vendor/qcom/opensource/usb/etc/init.qcom.usb.rc
-index 997aa1a..e0dbe50 100644
+index 997aa1a10304aa6b4eb8b6c28feb376a890bc050..904d5ba1a70761abf1427b350171ffeed242b870 100644
 --- a/vendor/qcom/opensource/usb/etc/init.qcom.usb.rc
 +++ b/vendor/qcom/opensource/usb/etc/init.qcom.usb.rc
 @@ -1302,7 +1302,7 @@ on property:sys.usb.ffs.ready=1 && property:sys.usb.config=uvc,adb && property:s
@@ -169,7 +169,7 @@ index 997aa1a..e0dbe50 100644
      mkdir /config/usb_gadget/g1/functions/uvc.0/streaming/h264/h/2160p
      write /config/usb_gadget/g1/functions/uvc.0/streaming/h264/h/2160p/wWidth 3840
      write /config/usb_gadget/g1/functions/uvc.0/streaming/h264/h/2160p/wHeight 2160
-@@ -2147,14 +2140,13 @@ on property:vendor.usb.uvc.function.init=1
+@@ -2147,20 +2140,24 @@ on property:vendor.usb.uvc.function.init=1
      write /config/usb_gadget/g1/functions/uvc.0/streaming/h264/h/2160p/dwMaxBitRate 3981312000
      write /config/usb_gadget/g1/functions/uvc.0/streaming/h264/h/2160p/dwMaxVideoFrameBufferSize 16588800
      write /config/usb_gadget/g1/functions/uvc.0/streaming/h264/h/2160p/dwDefaultFrameInterval 333333
@@ -186,3 +186,99 @@ index 997aa1a..e0dbe50 100644
      #symlink /config/usb_gadget/g1/functions/uvc.0/streaming/h264/h /config/usb_gadget/g1/functions/uvc.0/streaming/header/h/h
      symlink /config/usb_gadget/g1/functions/uvc.0/streaming/header/h1 /config/usb_gadget/g1/functions/uvc.0/streaming/class/fs/h1
      symlink /config/usb_gadget/g1/functions/uvc.0/streaming/header/h1 /config/usb_gadget/g1/functions/uvc.0/streaming/class/hs/h1
+     symlink /config/usb_gadget/g1/functions/uvc.0/streaming/header/h /config/usb_gadget/g1/functions/uvc.0/streaming/class/ss/h
+ 
+ on property:vendor.usb.uac2.function.init=1
+-    chown system usb /config/usb_gadget/g1/functions/uac2.0/c_status
+-    chown system usb /config/usb_gadget/g1/functions/uac2.0/p_status
+-    write /config/usb_gadget/g1/functions/uac2.0/c_sync adaptive
++    # USB IN: mono telephone microphone exposed to the host.
++    write /config/usb_gadget/g1/functions/uac2.0/p_chmask 1
++    write /config/usb_gadget/g1/functions/uac2.0/p_srate 48000
++    write /config/usb_gadget/g1/functions/uac2.0/p_ssize 2
++    # USB OUT: stereo host playback rendered by the telephone speakers.
++    write /config/usb_gadget/g1/functions/uac2.0/c_chmask 3
++    write /config/usb_gadget/g1/functions/uac2.0/c_srate 48000
++    write /config/usb_gadget/g1/functions/uac2.0/c_ssize 2
+diff --git a/vendor/qcom/opensource/usb/hal/UsbGadget.cpp b/vendor/qcom/opensource/usb/hal/UsbGadget.cpp
+index de5b8d04053137d74736f90bb9dd545fc67c0873..e99856690e445acddbf5436af25b4cdeb47b85fd 100644
+--- a/vendor/qcom/opensource/usb/hal/UsbGadget.cpp
++++ b/vendor/qcom/opensource/usb/hal/UsbGadget.cpp
+@@ -55,6 +55,7 @@
+ #define PERSIST_VENDOR_USB_EXTRA_PROP "persist.vendor.usb.config.extra"
+ #define QDSS_INST_NAME_PROP "vendor.usb.qdss.inst.name"
+ #define UVC_ENABLED_PROP "ro.usb.uvc.enabled"
++#define USB_AUDIO_ENABLED_PROP "ro.usb.audio_gadget.enabled"
+ #define CONFIG_STRING CONFIG_PATH "strings/0x409/configuration"
+ 
+ namespace aidl {
+@@ -396,8 +397,13 @@ static Status validateAndSetVidPid(uint64_t functions) {
+             CONFIGURATION_NOT_SUPPORTED;
+       } else {
+         vid = "0x18d1";
+-        pid = "0x4eed";
+-        composition = "uvc";
++        if (GetBoolProperty(USB_AUDIO_ENABLED_PROP, false)) {
++          pid = "0x4eef";
++          composition = "uvc,uac2";
++        } else {
++          pid = "0x4eed";
++          composition = "uvc";
++        }
+       }
+       break;
+     case GadgetFunction::ADB | GadgetFunction::UVC:
+@@ -407,8 +413,13 @@ static Status validateAndSetVidPid(uint64_t functions) {
+             CONFIGURATION_NOT_SUPPORTED;
+       } else {
+         vid = "0x18d1";
+-        pid = "0x4eee";
+-        composition = "uvc,adb";
++        if (GetBoolProperty(USB_AUDIO_ENABLED_PROP, false)) {
++          pid = "0x4ef0";
++          composition = "uvc,uac2,adb";
++        } else {
++          pid = "0x4eee";
++          composition = "uvc,adb";
++        }
+       }
+       break;
+     default:
+@@ -505,9 +516,24 @@ Status UsbGadget::setupFunctions(int64_t functions,
+       }
+ 
+       ALOGI("setCurrentUsbFunctions uvc");
++      const bool audioEnabled = GetBoolProperty(USB_AUDIO_ENABLED_PROP, false);
++      if (audioEnabled &&
++          (!WriteStringToFile("0xEF", DEVICE_CLASS_PATH) ||
++           !WriteStringToFile("0x02", DEVICE_SUB_CLASS_PATH) ||
++           !WriteStringToFile("0x01", DEVICE_PROTOCOL_PATH))) {
++        ALOGE("Unable to set the CaCamOS composite USB device class");
++        return Status::ERROR;
++      }
+       if (linkFunction("uvc.0", i++)) {
+         return Status::ERROR;
+       }
++      if (audioEnabled) {
++        ALOGI("Adding CaCamOS UAC2 microphone and speaker");
++        if (linkFunction("uac2.0", i++)) {
++          return Status::ERROR;
++        }
++        WriteStringToFile("CaCamOS Webcam + Audio", CONFIG_STRING);
++      }
+     }
+   }
+ 
+diff --git a/vendor/qcom/opensource/usb/hal/usb_compositions.conf b/vendor/qcom/opensource/usb/hal/usb_compositions.conf
+index 42cfcb93718caaada7e1e260d46734c2d98b8d4c..8716c9d5e1c52bafd0bd225cbec840831f933473 100644
+--- a/vendor/qcom/opensource/usb/hal/usb_compositions.conf
++++ b/vendor/qcom/opensource/usb/hal/usb_compositions.conf
+@@ -55,6 +55,8 @@ diag,uvc,adb								0x05C6	0x90CB	diag,adb,uvc
+ diag,uvc								0x05C6	0x90DF
+ diag,uac2,uvc,adb							0x05C6	0x90CC	diag,adb,uac2,uvc
+ diag,uac2,uvc								0x05C6	0x90E0
++uvc,uac2								0x18D1	0x4EEF
++uvc,uac2,adb								0x18D1	0x4EF0	adb,uvc,uac2
+ diag,diag_mdm,qdss,qdss_mdm,serial_cdev,dpl,rmnet			0x05C6	0x90E4
+ diag,diag_mdm,qdss,qdss_mdm,serial_cdev,dpl,rmnet,adb			0x05C6	0x90E5
+ rndis,diag,diag_mdm,qdss,qdss_mdm,serial_cdev,dpl			0x05C6	0x90E6

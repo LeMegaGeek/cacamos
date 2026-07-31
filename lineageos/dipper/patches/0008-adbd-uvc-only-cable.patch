@@ -1,5 +1,5 @@
 diff --git a/packages/modules/adb/daemon/main.cpp b/packages/modules/adb/daemon/main.cpp
-index 0d8c8211..f33a978d 100644
+index 0d8c8211668579b09dae990af5d82e85a83620ee..fd3572eec0877d8dd74ccde78639d67943bba491 100644
 --- a/packages/modules/adb/daemon/main.cpp
 +++ b/packages/modules/adb/daemon/main.cpp
 @@ -254,7 +254,18 @@ int adbd_main() {
@@ -16,7 +16,7 @@ index 0d8c8211..f33a978d 100644
 +         * CaCamOS reserves the cable for UVC. Treat USB as configured so the
 +         * generic fallback below cannot expose an unauthenticated TCP port.
 +         */
-+        LOG(INFO) << "USB FunctionFS transport disabled by CaCamOS UVC-only policy";
++        LOG(INFO) << "USB FunctionFS transport disabled by CaCamOS USB AV-only policy";
 +        is_usb = true;
 +    } else if (access(USB_FFS_ADB_EP0, F_OK) == 0) {
          // Listen on USB.

@@ -6,6 +6,15 @@ project_root="$(cd "$script_dir/../../.." && pwd)"
 adb_bin="${ADB:-adb}"
 adb_serial="${ADB_SERIAL:-}"
 expected_build_incremental="${EXPECTED_BUILD_INCREMENTAL:-}"
+expected_cacamos_version="$(
+    tr -d '\r\n' < "$script_dir/../VERSION"
+)"
+expected_cacamos_version="${EXPECTED_CACAMOS_VERSION:-$expected_cacamos_version}"
+[[ "$expected_cacamos_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+    printf 'ERROR: invalid expected CaCamOS version: %s\n' \
+        "$expected_cacamos_version" >&2
+    exit 2
+}
 report_dir="${1:-$project_root/dist/cacam-os-qualifications}"
 failures=0
 
@@ -27,6 +36,7 @@ require_cmd() {
 
 require_cmd "$adb_bin"
 require_cmd awk
+require_cmd lsusb
 require_cmd python3
 require_cmd v4l2-ctl
 
@@ -98,6 +108,10 @@ adb_wifi_auto_enabled="$(
     adb_shell cmd overlay lookup android android:bool/config_adbWifiAutoEnable
 )"
 webcam_package="$(adb_shell pm list packages com.android.DeviceAsWebcam)"
+record_audio_permission="$(
+    adb_shell dumpsys package check-permission \
+        android.permission.RECORD_AUDIO com.android.DeviceAsWebcam 0
+)"
 system_packages="$(adb_shell pm list packages -s)"
 webcam_pid="$(adb_shell pidof com.android.DeviceAsWebcam)"
 lockscreen_disabled="$(adb_shell locksettings get-disabled)"
@@ -148,9 +162,10 @@ printf 'home_activity=%s\n' "$home_activity"
 [[ "$brand" == "CaCamOS" ]] &&
     pass "the Android product brand is CaCamOS" ||
     fail "unexpected product brand: ${brand:-unset}"
-[[ "$cacamos_appliance" == "true" && "$cacamos_version" == "1.0.0" ]] &&
-    pass "the installed system is CaCamOS appliance 1.0.0" ||
-    fail "expected CaCamOS appliance 1.0.0"
+[[ "$cacamos_appliance" == "true" &&
+    "$cacamos_version" == "$expected_cacamos_version" ]] &&
+    pass "the installed system is CaCamOS appliance $expected_cacamos_version" ||
+    fail "expected CaCamOS appliance $expected_cacamos_version"
 [[ "$setupwizard_mode" == "DISABLED" ]] &&
     pass "the setup wizard is disabled" ||
     fail "setup wizard mode is ${setupwizard_mode:-unset}"
@@ -213,6 +228,7 @@ for option in \
     CONFIG_MEDIA_SUPPORT=y \
     CONFIG_USB_GADGET=y \
     CONFIG_USB_CONFIGFS=y \
+    CONFIG_USB_CONFIGFS_F_UAC2=y \
     CONFIG_USB_CONFIGFS_F_UVC=y; do
     grep -Fxq "$option" <<<"$kernel_config" &&
         pass "kernel has $option" ||
@@ -262,7 +278,7 @@ mapfile -t active_adb_transports < <(
 )
 for transport in "${active_adb_transports[@]}"; do
     if [[ "$transport" != *:* ]]; then
-        fail "USB ADB transport is exposed on the UVC-only cable: $transport"
+        fail "USB ADB transport is exposed on the audio/video-only cable: $transport"
     fi
 done
 [[ "$adb_wifi_enabled" == "1" ]] && pass "wireless debugging is enabled" ||
@@ -347,10 +363,49 @@ PY
     fi
 fi
 
+if [[ "$record_audio_permission" == "0" ]]; then
+    pass "DeviceAsWebcam has the fixed microphone permission"
+else
+    fail "DeviceAsWebcam microphone permission result is ${record_audio_permission:-unset}"
+fi
+
+if [[ ! -x "$script_dir/find-cacamos-audio.sh" ]]; then
+    fail "missing CaCamOS host-audio detector"
+elif ! host_audio="$("$script_dir/find-cacamos-audio.sh" 2>&1)"; then
+    fail "$host_audio"
+else
+    printf '\nHost UAC2\n'
+    printf '%s\n' "$host_audio"
+    grep -Eq '^microphone=plughw:[0-9]+,[0-9]+$' <<<"$host_audio" &&
+        pass "Linux exposes the CaCamOS standard microphone PCM" ||
+        fail "the CaCamOS host microphone PCM is missing"
+    grep -Eq '^speakers=plughw:[0-9]+,[0-9]+$' <<<"$host_audio" &&
+        pass "Linux exposes the CaCamOS standard speakers PCM" ||
+        fail "the CaCamOS host speakers PCM is missing"
+fi
+
+if usb_descriptors="$(lsusb -v -d 18d1:4eef 2>&1)"; then
+    printf '\nComposite USB descriptors\n'
+    grep -Eq 'bDeviceClass[[:space:]]+239[[:space:]]' <<<"$usb_descriptors" &&
+        grep -Eq 'bDeviceSubClass[[:space:]]+2[[:space:]]' <<<"$usb_descriptors" &&
+        grep -Eq 'bDeviceProtocol[[:space:]]+1[[:space:]]' <<<"$usb_descriptors" &&
+        pass "the host sees the Windows-compatible composite IAD identity" ||
+        fail "the composite device class is not EF/02/01"
+    grep -Eq 'bInterfaceClass[[:space:]]+14[[:space:]]' <<<"$usb_descriptors" &&
+        pass "the composite device contains a standard video function" ||
+        fail "the composite USB descriptors lack the video function"
+    grep -Eq 'bInterfaceClass[[:space:]]+1[[:space:]]' <<<"$usb_descriptors" &&
+        pass "the composite device contains a standard audio function" ||
+        fail "the composite USB descriptors lack the audio function"
+else
+    fail "lsusb cannot read the CaCamOS composite device 18d1:4eef"
+fi
+
 printf '\nreport=%s\n' "$report"
 if [[ "$failures" -ne 0 ]]; then
     printf 'FAIL: runtime qualification found %s problem(s).\n' "$failures" >&2
     exit 1
 fi
 
-printf 'PASS: CaCamOS 1.0.0 appliance startup, access and standard UVC gates passed.\n'
+printf 'PASS: CaCamOS %s appliance startup and standard UVC/UAC2 gates passed.\n' \
+    "$expected_cacamos_version"

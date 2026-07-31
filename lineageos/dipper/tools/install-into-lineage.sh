@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 addon_dir="$(cd "$script_dir/.." && pwd)"
 patch_dir="$addon_dir/patches"
+addon_version="$(tr -d '\r\n' < "$addon_dir/VERSION")"
 
 usage() {
     printf 'Usage: %s /path/to/lineageos/root\n' "$(basename "$0")" >&2
@@ -13,6 +14,9 @@ fail() {
     printf 'ERROR: %s\n' "$*" >&2
     exit 1
 }
+
+[[ "$addon_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+    fail "invalid CaCamOS version: $addon_version"
 
 lineage_root="${1:-}"
 if [[ -z "$lineage_root" ]]; then
@@ -29,9 +33,15 @@ uvc_provider="$lineage_root/packages/services/DeviceAsWebcam/interface/jni/UVCPr
 webcam_manifest="$lineage_root/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml"
 webcam_prefs="$lineage_root/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java"
 webcam_service="$lineage_root/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java"
+webcam_audio_bridge="$lineage_root/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java"
+webcam_audio_native="$lineage_root/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp"
+usb_gadget_hal="$lineage_root/vendor/qcom/opensource/usb/hal/UsbGadget.cpp"
+webcam_policy="$lineage_root/system/sepolicy/private/device_as_webcam.te"
+default_permissions="$lineage_root/device/xiaomi/dipper/permissions/default-permissions-cacamos.xml"
 adbd_main="$lineage_root/packages/modules/adb/daemon/main.cpp"
 wireless_debugging_enabler="$lineage_root/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java"
 usb_debugging_controller="$lineage_root/packages/apps/Settings/src/com/android/settings/development/AdbPreferenceController.java"
+webcam_settings_controller="$lineage_root/packages/apps/Settings/src/com/android/settings/homepage/CaCamOsWebcamPreferenceController.java"
 lineage_common_mobile="$lineage_root/vendor/lineage/config/common_mobile.mk"
 recovery_main="$lineage_root/bootable/recovery/recovery_main.cpp"
 system_init="$lineage_root/system/core/rootdir/init.rc"
@@ -46,22 +56,35 @@ mapfile -t patch_files < <(find "$patch_dir" -maxdepth 1 -type f -name '*.patch'
 
 if grep -q 'CaCamOsDeviceAsWebcamDipper' "$device_mk" &&
     grep -q 'ro.usb.uvc.enabled=true' "$device_mk" &&
+    grep -q 'ro.usb.audio_gadget.enabled=true' "$device_mk" &&
     grep -q 'ro.usb.uvc.disable_video_encode_flag=true' "$device_mk" &&
     grep -q 'CACAMOS_APPLIANCE := false' "$device_product" &&
-    grep -q 'ro.cacamos.version=1.0.0' "$device_product" &&
+    grep -q "ro.cacamos.version=$addon_version" "$device_product" &&
     grep -q '<bool name="config_usbDefaultToUvc">true</bool>' "$usb_default_overlay" &&
     grep -q '<bool name="config_adbWifiAutoEnable">true</bool>' "$usb_default_overlay" &&
     grep -q '<bool name="config_disableLockscreenByDefault">true</bool>' "$usb_default_overlay" &&
     grep -q 'CONFIG_USB_CONFIGFS_F_UVC=y' "$kernel_fragment" &&
+    grep -q 'CONFIG_USB_CONFIGFS_F_UAC2=y' "$kernel_fragment" &&
     grep -q 'getFrameAndQueueBufferToGadgetDriver(true)' "$uvc_provider" &&
     grep -q 'android:directBootAware="true"' "$webcam_manifest" &&
     grep -q 'android:persistent="true"' "$webcam_manifest" &&
+    grep -q 'android.permission.RECORD_AUDIO' "$webcam_manifest" &&
+    grep -q 'android:foregroundServiceType="camera|microphone"' "$webcam_manifest" &&
     grep -q 'android.intent.category.HOME' "$webcam_manifest" &&
     grep -q 'createDeviceProtectedStorageContext' "$webcam_prefs" &&
     grep -q 'isWebcamReady()' "$webcam_service" &&
-    grep -q 'USB FunctionFS transport disabled by CaCamOS UVC-only policy' "$adbd_main" &&
+    grep -q 'mUsbAudioBridge.start()' "$webcam_service" &&
+    grep -q 'AudioRecord.Builder()' "$webcam_audio_bridge" &&
+    grep -q 'UAC2Gadget' "$webcam_audio_native" &&
+    grep -q 'linkFunction("uac2.0", i++)' "$usb_gadget_hal" &&
+    grep -q 'audio_device:chr_file rw_file_perms' "$webcam_policy" &&
+    grep -q 'audioserver_service' "$webcam_policy" &&
+    grep -q 'mediametrics_service' "$webcam_policy" &&
+    grep -q 'android.permission.RECORD_AUDIO' "$default_permissions" &&
+    grep -q 'USB FunctionFS transport disabled by CaCamOS USB AV-only policy' "$adbd_main" &&
     grep -q 'config_adbWifiAutoEnable' "$wireless_debugging_enabler" &&
     grep -q 'isUsbAdbDisabledByProduct' "$usb_debugging_controller" &&
+    grep -q 'WEBCAM_COMPONENT' "$webcam_settings_controller" &&
     grep -q 'CACAMOS_APPLIANCE' "$lineage_common_mobile" &&
     grep -q 'CaCamOS recovery ADB enabled for appliance maintenance' "$recovery_main" &&
     grep -q 'service cacamos_boot_probe' "$system_init"; then

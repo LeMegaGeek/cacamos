@@ -1,32 +1,34 @@
 # CaCamOS
 
-CaCamOS turns a supported Android phone into a standard USB Video Class
-webcam. The host uses the normal UVC driver, so no CaCam application, BGOBS
-plugin or network video transport is required.
+CaCamOS turns a supported Android phone into a standard USB webcam,
+microphone and speaker. The host uses its normal USB Video Class and USB
+Audio Class 2 drivers, so no CaCam application, BGOBS plugin or network
+transport is required.
 
 ## Xiaomi Mi 8 Release
 
-CaCamOS 1.0.0 is the first dedicated webcam OS for the Xiaomi Mi 8
+CaCamOS 1.1.0 is the current dedicated webcam OS for the Xiaomi Mi 8
 (`dipper`), based on LineageOS 22.2:
 
 ```text
-lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.0-dipper.zip
-size=1068308344
-sha256=7ff904f2bd95bda315266ab7c40b5d1fa2c2a6a354c53c15ae0393761360e1ea
-build_incremental=1785337449
+lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
+size=1068470898
+sha256=26c95ecf7ba4886b55f64bfae298b9f799c91fc8a2ee25476abc8f936f4879ca
+build_incremental=1785352812
 ```
 
 Download:
-<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.0.0>
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.1.0>
 
 The OS is deliberately narrow:
 
 - boots with CaCamOS branding directly into the webcam preview;
 - has no lock screen or consumer setup flow;
 - removes the browser, gallery, music player and generic launcher;
-- exposes only UVC on the physical USB cable;
+- exposes UVC video and bidirectional UAC2 audio on the physical USB cable;
 - keeps authenticated ADB maintenance available over Wi-Fi;
-- works as a normal webcam in OBS, Chromium/WebRTC, GStreamer and VLC.
+- works as a normal camera, microphone and speaker in Linux and Windows
+  applications.
 
 The advertised MJPEG modes are:
 
@@ -36,10 +38,10 @@ The advertised MJPEG modes are:
 | 1024x576 | 15, 30 FPS |
 | 1920x1080 | 15, 30 FPS |
 
-The 1.0.0 image fixes the former stock-OBS startup timeout by queuing a valid
-MJPEG warmup frame before UVC streaming starts. It also keeps processing UVC
-control events across rapid stream close/reopen cycles and treats a removed
-USB endpoint as a normal disconnect.
+The 1.1.0 image keeps the standard-UVC and stability fixes qualified in 1.0.0
+and adds standard USB audio. The MI8 microphone appears as a mono 48 kHz,
+16-bit input. Its speakers appear as a stereo 48 kHz, 16-bit output. Video and
+both audio directions work simultaneously through one cable.
 
 Physical qualification on the MI8 includes:
 
@@ -49,10 +51,14 @@ Physical qualification on the MI8 includes:
 - Chromium WebRTC, GStreamer and VLC;
 - 3,600 intact 720p frames over two minutes at 29.94 FPS;
 - five host USB resets followed by successful capture;
-- correct orientation and colors in portrait and landscape.
+- correct orientation and colors in portrait and landscape;
+- simultaneous video, microphone capture and speaker playback on Linux;
+- ten repeated audio/video opens and five USB resets with audio recovery;
+- standard camera, microphone and speaker operation on Windows without a
+  CaCamOS driver or host application.
 
 The complete acceptance record is in
-[`lineageos/dipper/V1_ACCEPTANCE.md`](lineageos/dipper/V1_ACCEPTANCE.md).
+[`lineageos/dipper/V1_1_ACCEPTANCE.md`](lineageos/dipper/V1_1_ACCEPTANCE.md).
 
 ## Installation
 
@@ -66,11 +72,11 @@ sideload:
 4. On the host, run:
 
 ```bash
-adb sideload lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.0-dipper.zip
+adb sideload lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
 ```
 
 After startup, connect the phone to Wi-Fi once for authenticated wireless ADB
-maintenance. The USB cable remains dedicated to UVC.
+maintenance. The USB cable remains dedicated to UVC and UAC2.
 
 Do not use Android's `svc usb resetUsbGadget` command on this MI8 kernel. Use
 an ordinary cable reconnect or a host-side USB reset.
@@ -114,7 +120,7 @@ uses ten cores and reserves six:
   --min-free-swap-mib 32768
 ```
 
-The repository also retains the Mi 10 Pro (`cmi`) source addon. CaCamOS 1.0.0
+The repository also retains the Mi 10 Pro (`cmi`) source addon. CaCamOS 1.1.0
 is qualified and released only for the Xiaomi Mi 8.
 
 ## Host Check
@@ -124,7 +130,10 @@ On Linux, confirm enumeration with:
 ```bash
 v4l2-ctl --list-devices
 v4l2-ctl --device=/dev/video0 --list-formats-ext
+arecord -l
+aplay -l
 ```
 
-In OBS, Teams, a browser or another video application, select the standard
-`UVC Camera` device.
+In OBS, Teams, a browser or another application, select `CaCamOS Webcam` as
+the camera, microphone or audio output. Windows and Linux use their built-in
+USB class drivers.

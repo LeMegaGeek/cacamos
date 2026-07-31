@@ -1,11 +1,13 @@
 diff --git a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-index 2af9999..132b026 100644
+index 2af999935683ce57d7d3ac60319d1ec15bc82139..33a10308d6fe5f9a2ef39f3bc0de068ba2f1a6c3 100644
 --- a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 +++ b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-@@ -9,29 +9,48 @@
+@@ -9,30 +9,51 @@
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
      <uses-permission android:name="android.permission.CAMERA"/>
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
++    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 +    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 +    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
  
@@ -47,13 +49,32 @@ index 2af9999..132b026 100644
  
          <service
              android:name="com.android.deviceaswebcam.DeviceAsWebcamFgServiceImpl"
+-            android:foregroundServiceType="camera"
 +            android:directBootAware="true"
 +            android:exported="false"
-             android:foregroundServiceType="camera"
++            android:foregroundServiceType="camera|microphone"
              android:singleUser="true"/>
      </application>
+ </manifest>
+diff --git a/packages/services/DeviceAsWebcam/impl/res/drawable/ic_settings.xml b/packages/services/DeviceAsWebcam/impl/res/drawable/ic_settings.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..b01b5a0aa9ed025e9319798a953cc6ead2b5f33b
+--- /dev/null
++++ b/packages/services/DeviceAsWebcam/impl/res/drawable/ic_settings.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="@color/selector_ic">
++    <path
++        android:fillColor="@android:color/white"
++        android:pathData="M19.43,12.98c0.04,-0.32 0.07,-0.65 0.07,-0.98s-0.03,-0.66 -0.07,-0.98l2.11,-1.65c0.19,-0.15 0.24,-0.42 0.12,-0.64l-2,-3.46c-0.12,-0.22 -0.37,-0.31 -0.6,-0.22l-2.49,1c-0.52,-0.4 -1.08,-0.73 -1.69,-0.98L14.5,2.42C14.47,2.18 14.25,2 14,2h-4c-0.25,0 -0.46,0.18 -0.5,0.42L9.12,5.07c-0.61,0.25 -1.17,0.59 -1.69,0.98l-2.49,-1c-0.23,-0.08 -0.48,0 -0.6,0.22l-2,3.46c-0.13,0.22 -0.07,0.49 0.12,0.64l2.11,1.65C4.53,11.34 4.5,11.67 4.5,12s0.03,0.66 0.07,0.98l-2.11,1.65c-0.19,0.15 -0.24,0.42 -0.12,0.64l2,3.46c0.12,0.22 0.37,0.31 0.6,0.22l2.49,-1c0.52,0.4 1.08,0.73 1.69,0.98l0.38,2.65c0.04,0.24 0.25,0.42 0.5,0.42h4c0.25,0 0.46,-0.18 0.5,-0.42l0.38,-2.65c0.61,-0.25 1.17,-0.58 1.69,-0.98l2.49,1c0.23,0.08 0.48,0 0.6,-0.22l2,-3.46c0.12,-0.22 0.07,-0.49 -0.12,-0.64L19.43,12.98zM12,15.5A3.5,3.5 0,1 1,12,8a3.5,3.5 0,0 1,0,7.5z" />
++</vector>
 diff --git a/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml b/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml
-index a69008a..449da68 100644
+index a69008a3c0c6c3f13a1d2761b035582a1ed32812..449da68de5de4f288471505de11506e07e33abc0 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml
 @@ -65,6 +65,19 @@
@@ -77,7 +98,7 @@ index a69008a..449da68 100644
      </FrameLayout>
  
 diff --git a/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml b/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml
-index 5e1af11..ec1eb07 100644
+index 5e1af11ec26161705b1805f1784be0b106fc3ab6..ec1eb075ffa3c21577c2f38ae1d8237cbfffad97 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml
 @@ -16,7 +16,7 @@
@@ -98,7 +119,7 @@ index 5e1af11..ec1eb07 100644
      <string name="hq_warning_dialog_content_1" msgid="4522581741851657138">"Le mode Haute qualité désactive les optimisations d\'énergie pour améliorer la qualité de la webcam. L\'utilisation de ce mode peut entraîner une consommation d\'énergie importante qui peut faire chauffer l\'appareil."</string>
      <string name="hq_warning_dialog_content_2" msgid="3916465225973908142"><b><u>"AVERTISSEMENT"</u></b>" : une utilisation prolongée à des températures élevées peut avoir des conséquences négatives sur l\'état de la batterie de cet appareil à long terme."</string>
 diff --git a/packages/services/DeviceAsWebcam/impl/res/values/strings.xml b/packages/services/DeviceAsWebcam/impl/res/values/strings.xml
-index 1b1425b..2567191 100644
+index 1b1425b3130bfac0791a8ab78d58aa825219769e..2567191e45d306857da365b3e9076b008a373e4e 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/values/strings.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/values/strings.xml
 @@ -16,7 +16,7 @@
@@ -119,7 +140,7 @@ index 1b1425b..2567191 100644
      <string name="hq_warning_dialog_title">High Quality Mode</string>
      <string name="hq_warning_dialog_content_1">High Quality Mode disables power optimizations to improve webcam quality. Using this mode may cause significant power draw which can heat up the device.</string>
 diff --git a/packages/services/DeviceAsWebcam/impl/res/values/themes.xml b/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
-index 3a1b81e..ce14eb8 100644
+index 3a1b81eb6e64a02258025e5a05fc2121a44ff005..ce14eb8821a79641495381e931249d5732812a83 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
 @@ -18,9 +18,9 @@
@@ -137,7 +158,7 @@ index 3a1b81e..ce14eb8 100644
 \ No newline at end of file
 +</resources>
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
-index 832164c..88f87cb 100644
+index 832164cd0524d6244e452b994dec40db00a39acf..88f87cba96c32792706fb0dd66e547375a418bf1 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
 @@ -20,6 +20,7 @@ import android.content.Context;
@@ -1229,7 +1250,7 @@ index 832164c..88f87cb 100644
                  if (mCameraDevice == null || mCaptureSession == null) {
                      return;
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt
-index b9c4d63..6bd63b0 100644
+index b9c4d63c07ee8ad3b827aee48e6079eb4c14401f..6bd63b0758d0b6f60f1ca5835f42e8e6da2522c6 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt
 @@ -30,9 +30,7 @@ class DeviceAsWebcamFgServiceImpl : DeviceAsWebcamFgService() {
@@ -1244,7 +1265,7 @@ index b9c4d63..6bd63b0 100644
      }
  
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
-index 47f92da..517ee6d 100644
+index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f322c4d3684 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
 @@ -23,6 +23,7 @@ import android.animation.ObjectAnimator;
@@ -1720,7 +1741,7 @@ index 47f92da..517ee6d 100644
       * Returns {@code true} when the device has both available back and front cameras. Otherwise,
       * returns {@code false}.
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
-index c318d54..8034c04 100644
+index c318d54dce97d032408f34b57499fc8ea08db332..8034c04baaf1b49e1b80d78398472dae3e6b81e2 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
 @@ -23,12 +23,14 @@ import android.hardware.camera2.CameraCharacteristics;
@@ -1903,7 +1924,7 @@ index c318d54..8034c04 100644
  }
 -
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
-index 9228411..85e64d3 100644
+index 9228411e16ca78bdd6d869f20ac6a6f83687e834..85e64d30b1babe0fb61c38fd790b8e783456f3af 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
 @@ -46,8 +46,21 @@ class WebcamControllerImpl(context: Context) : WebcamController() {
@@ -1930,7 +1951,7 @@ index 9228411..85e64d3 100644
  
      /**
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
-index eb853e1..492c928 100644
+index eb853e14ea2f899b95f3e69f33c3eae49f018069..492c92886598d14d461347aa671c613b77efd269 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
 @@ -31,8 +31,8 @@ public class UserPrefs {
@@ -1944,8 +1965,28 @@ index eb853e1..492c928 100644
                  Context.MODE_PRIVATE);
          mPrefsEditor = mPrefs.edit();
      }
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/Android.bp b/packages/services/DeviceAsWebcam/interface/jni/Android.bp
+index 25ec0e3639b82832cfe3a97cffcd0b101d21f816..ffa205773ee8afaf8a957edb98f498378dfc6599 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/Android.bp
++++ b/packages/services/DeviceAsWebcam/interface/jni/Android.bp
+@@ -13,6 +13,7 @@ cc_library_shared {
+         "liblog",
+         "libmediandk",
+         "libnativehelper",
++        "libtinyalsa",
+         "libyuv",
+     ],
+     static_libs: [
+@@ -24,6 +25,7 @@ cc_library_shared {
+         "DeviceAsWebcamServiceManager.cpp",
+         "Encoder.cpp",
+         "SdkFrameProvider.cpp",
++        "UsbAudioBridge.cpp",
+         "UVCProvider.cpp",
+     ],
+     cflags: [
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp b/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
-index 3e2c1fa..75e08d8 100644
+index 3e2c1fae95038a02239f1d09bcf10036235890e5..75e08d827bc71b806158495793332f371633eb88 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
 @@ -17,6 +17,7 @@
@@ -2006,7 +2047,7 @@ index 3e2c1fa..75e08d8 100644
  }
  
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Buffer.h b/packages/services/DeviceAsWebcam/interface/jni/Buffer.h
-index e0459f3..bd09fa6 100644
+index e0459f386e5f7c034a1431cdb0bab2f438f87849..bd09fa6d7569584ca34a9a97dc0ba9fd120b46b9 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Buffer.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Buffer.h
 @@ -21,6 +21,7 @@
@@ -2034,8 +2075,37 @@ index e0459f3..bd09fa6 100644
      // Using a simple vector here as we don't expect to have more than 3-4 buffers in circulation
      // We have multiple producer buffers so that skews between other producers being used by the
      // producer side - eg: buffer from camera doesn't get blocked from getting encoded while
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp
+index a6d83be60e7c5cf60caf2bd41d6605c6b4435ec9..23ecbedc81efaf41b7235f2f0c8e1d666a95235e 100644
+--- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp
++++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp
+@@ -21,6 +21,7 @@
+ #include <nativehelper/JNIHelp.h>
+ 
+ #include "DeviceAsWebcamNative.h"
++#include "UsbAudioBridge.h"
+ 
+ /**
+  * Called by the JVM when JNI is loaded. This does not imply that the service is actually running,
+@@ -35,6 +36,9 @@ jint JNI_OnLoad(JavaVM* jvm, void*) {
+     if (DeviceAsWebcamNative::registerJNIMethods(e, jvm)) {
+         return JNI_ERR;
+     }
++    if (registerUsbAudioBridgeNativeMethods(e)) {
++        return JNI_ERR;
++    }
+     return JNI_VERSION_1_6;
+ }
+ 
+@@ -152,4 +156,4 @@ JNIEnv* DeviceAsWebcamNative::getJNIEnvOrAbort() {
+ }
+ 
+ }  // namespace webcam
+-}  // namespace android
+\ No newline at end of file
++}  // namespace android
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
-index 2ef969d..002ba6e 100644
+index 2ef969dae054103413e8bf9d6e681a0ef82468d2..002ba6e9d6924daa74b496e2090548ca285d0f7c 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
 @@ -20,6 +20,7 @@
@@ -2245,7 +2315,7 @@ index 2ef969d..002ba6e 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
-index 38d7bfa..a1f379c 100644
+index 38d7bfa7a57fd15f0f06cf82ee6290136f6ec9f5..a1f379c1364c6b66332f691edb5a7a0121e1c617 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
 @@ -20,7 +20,6 @@
@@ -2275,7 +2345,7 @@ index 38d7bfa..a1f379c 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp b/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
-index a3cddae..23e89db 100644
+index a3cddaecef295cec1ff3a28d528ad777830970c7..23e89db62e193995fe76fcd18e51c716d670435a 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
 @@ -20,44 +20,87 @@
@@ -2766,7 +2836,7 @@ index a3cddae..23e89db 100644
  
  void Encoder::encodeToYUYV(EncodeRequest& r) {
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Encoder.h b/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
-index fe0d868..027f7ac 100644
+index fe0d868ff82cc109be70be2a3e8b84a9695ff914..027f7acf77ed02beddf8ddb650f83ddfab9aa7ee 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
 @@ -17,6 +17,7 @@
@@ -2818,7 +2888,7 @@ index fe0d868..027f7ac 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
-index ab8fa5f..1cfa6f1 100644
+index ab8fa5f2504d75c700d3a3245d69fe2614deec52..1cfa6f1e6babd49cc49e60ecd36a1c339fb087f1 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
 @@ -46,15 +46,41 @@ void SdkFrameProvider::setStreamConfig() {
@@ -2922,7 +2992,7 @@ index ab8fa5f..1cfa6f1 100644
      }
  }
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
-index 27c1842..1992e6d 100644
+index 27c184201dce04a5d0b3ed4a867da80adeb77bb2..1992e6d7a06e6c9dd2a2e91b1514359ae9fbcdaf 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
 @@ -15,6 +15,7 @@
@@ -2959,7 +3029,7 @@ index 27c1842..1992e6d 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
-index 0710869..c6e2faf 100644
+index 0710869c642ea86516d961407a539e3c48cd07dc..c6e2faf6623359b1beb9a3198cd35d9fbea65803 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
 @@ -14,9 +14,10 @@
@@ -3938,7 +4008,7 @@ index 0710869..c6e2faf 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
-index b134398..1b8074c 100644
+index b1343986a734bf17e021687732cb84a6bcf47703..1b8074c399becbd027791d0a2e0302af41af810a 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
 @@ -25,9 +25,10 @@
@@ -4038,8 +4108,304 @@ index b134398..1b8074c 100644
      EpollW mEpollW;
  };
  
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..19945a3e7b3ff17fe378ad06c8ab32ca66322462
+--- /dev/null
++++ b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp
+@@ -0,0 +1,235 @@
++/*
++ * Copyright (C) 2026 CaCamOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#define LOG_TAG "CaCamUsbAudio"
++
++#include "UsbAudioBridge.h"
++
++#include <android-base/file.h>
++#include <android-base/strings.h>
++#include <fcntl.h>
++#include <log/log.h>
++#include <nativehelper/JNIHelp.h>
++#include <poll.h>
++#include <tinyalsa/asoundlib.h>
++#include <unistd.h>
++
++#include <cerrno>
++#include <chrono>
++#include <cstdio>
++#include <cstring>
++#include <mutex>
++#include <string>
++
++namespace android {
++namespace webcam {
++namespace {
++
++constexpr unsigned int kSampleRate = 48000;
++constexpr unsigned int kPeriodFrames = 480;
++constexpr unsigned int kPeriodCount = 4;
++constexpr int kCardScanLimit = 32;
++constexpr auto kOpenRetryDelay = std::chrono::milliseconds(500);
++
++int findUac2Card() {
++    for (int card = 0; card < kCardScanLimit; ++card) {
++        char path[64];
++        std::snprintf(path, sizeof(path), "/proc/asound/card%d/id", card);
++        std::string id;
++        if (android::base::ReadFileToString(path, &id)) {
++            const std::string trimmedId = android::base::Trim(id);
++            if (trimmedId == "UAC2Gadget" || trimmedId == "UAC2_Gadget") {
++                return card;
++            }
++        }
++    }
++    return -1;
++}
++
++class PcmEndpoint {
++  public:
++    PcmEndpoint(bool capture, unsigned int channels, const char* name)
++        : mCapture(capture), mChannels(channels), mName(name) {}
++
++    ~PcmEndpoint() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        closeLocked();
++    }
++
++    int transfer(void* buffer, size_t size) {
++        std::lock_guard<std::mutex> lock(mMutex);
++        if (!ensureOpenLocked()) {
++            return 0;
++        }
++
++        pollfd descriptor = {};
++        descriptor.fd = mFd;
++        descriptor.events = static_cast<short>(mCapture ? POLLIN : POLLOUT);
++        int pollResult;
++        do {
++            pollResult = poll(&descriptor, 1, 10);
++        } while (pollResult < 0 && errno == EINTR);
++
++        if (pollResult == 0) {
++            return 0;
++        }
++        if (pollResult < 0 || (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) {
++            closeLocked();
++            return 0;
++        }
++
++        ssize_t result;
++        do {
++            result = mCapture ? ::read(mFd, buffer, size) : ::write(mFd, buffer, size);
++        } while (result < 0 && errno == EINTR);
++
++        if (result >= 0) {
++            return static_cast<int>(result);
++        }
++        if (errno == EAGAIN || errno == EWOULDBLOCK) {
++            return 0;
++        }
++
++        ALOGW("%s stream stopped: %s", mName, std::strerror(errno));
++        closeLocked();
++        return 0;
++    }
++
++    void reset() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        closeLocked();
++        mNextOpenAttempt = std::chrono::steady_clock::time_point::min();
++    }
++
++  private:
++    bool ensureOpenLocked() {
++        if (mPcm != nullptr) {
++            return true;
++        }
++
++        const auto now = std::chrono::steady_clock::now();
++        if (now < mNextOpenAttempt) {
++            return false;
++        }
++        mNextOpenAttempt = now + kOpenRetryDelay;
++
++        const int card = findUac2Card();
++        if (card < 0) {
++            return false;
++        }
++
++        pcm_config config = {};
++        config.channels = mChannels;
++        config.rate = kSampleRate;
++        config.period_size = kPeriodFrames;
++        config.period_count = kPeriodCount;
++        config.format = PCM_FORMAT_S16_LE;
++        config.start_threshold = mCapture ? 1 : kPeriodFrames;
++        config.stop_threshold = kPeriodFrames * kPeriodCount;
++        config.avail_min = kPeriodFrames;
++
++        const unsigned int flags = (mCapture ? PCM_IN : PCM_OUT) | PCM_NORESTART;
++        pcm* candidate = pcm_open(card, 0, flags, &config);
++        if (candidate == nullptr || !pcm_is_ready(candidate)) {
++            ALOGW("Unable to open %s on UAC2 card %d: %s", mName, card,
++                  candidate == nullptr ? "null PCM" : pcm_get_error(candidate));
++            if (candidate != nullptr) {
++                pcm_close(candidate);
++            }
++            return false;
++        }
++
++        const int fd = pcm_get_poll_fd(candidate);
++        const int currentFlags = fcntl(fd, F_GETFL);
++        if (currentFlags < 0 || fcntl(fd, F_SETFL, currentFlags | O_NONBLOCK) < 0 ||
++            pcm_prepare(candidate) < 0 || (mCapture && pcm_start(candidate) < 0)) {
++            ALOGW("Unable to prepare %s on UAC2 card %d: %s", mName, card,
++                  pcm_get_error(candidate));
++            pcm_close(candidate);
++            return false;
++        }
++
++        mPcm = candidate;
++        mFd = fd;
++        ALOGI("%s connected to UAC2 card %d at %u Hz", mName, card, kSampleRate);
++        return true;
++    }
++
++    void closeLocked() {
++        if (mPcm != nullptr) {
++            pcm_close(mPcm);
++            mPcm = nullptr;
++            mFd = -1;
++        }
++    }
++
++    const bool mCapture;
++    const unsigned int mChannels;
++    const char* const mName;
++    std::mutex mMutex;
++    pcm* mPcm = nullptr;
++    int mFd = -1;
++    std::chrono::steady_clock::time_point mNextOpenAttempt =
++            std::chrono::steady_clock::time_point::min();
++};
++
++// Gadget playback sends the telephone microphone to USB IN. Gadget capture
++// receives USB OUT and is rendered by the telephone speakers.
++PcmEndpoint gMicrophoneToHost(false, 1, "microphone");
++PcmEndpoint gHostToSpeakers(true, 2, "speakers");
++
++int transferDirectBuffer(JNIEnv* env, jobject buffer, jint offset, jint length,
++                         PcmEndpoint& endpoint) {
++    void* base = env->GetDirectBufferAddress(buffer);
++    const jlong capacity = env->GetDirectBufferCapacity(buffer);
++    if (base == nullptr || offset < 0 || length < 0 || capacity < 0 ||
++        static_cast<jlong>(offset) > capacity || static_cast<jlong>(length) > capacity - offset) {
++        return -EINVAL;
++    }
++    return endpoint.transfer(static_cast<unsigned char*>(base) + offset,
++                             static_cast<size_t>(length));
++}
++
++jint nativeWriteMicrophone(JNIEnv* env, jclass, jobject buffer, jint offset, jint length) {
++    return transferDirectBuffer(env, buffer, offset, length, gMicrophoneToHost);
++}
++
++jint nativeReadSpeakers(JNIEnv* env, jclass, jobject buffer, jint offset, jint length) {
++    return transferDirectBuffer(env, buffer, offset, length, gHostToSpeakers);
++}
++
++void nativeReset(JNIEnv*, jclass) {
++    gMicrophoneToHost.reset();
++    gHostToSpeakers.reset();
++}
++
++const JNINativeMethod kMethods[] = {
++        {"nativeWriteMicrophone", "(Ljava/nio/ByteBuffer;II)I",
++         reinterpret_cast<void*>(nativeWriteMicrophone)},
++        {"nativeReadSpeakers", "(Ljava/nio/ByteBuffer;II)I",
++         reinterpret_cast<void*>(nativeReadSpeakers)},
++        {"nativeReset", "()V", reinterpret_cast<void*>(nativeReset)},
++};
++
++}  // namespace
++
++int registerUsbAudioBridgeNativeMethods(JNIEnv* env) {
++    return jniRegisterNativeMethods(env, "com/android/deviceaswebcam/UsbAudioBridge", kMethods,
++                                    NELEM(kMethods));
++}
++
++}  // namespace webcam
++}  // namespace android
+diff --git a/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.h b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..721cc8ce573d09ae039c6cfa5fc176975602e81b
+--- /dev/null
++++ b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.h
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (C) 2026 CaCamOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#pragma once
++
++#include <jni.h>
++
++namespace android {
++namespace webcam {
++
++int registerUsbAudioBridgeNativeMethods(JNIEnv* env);
++
++}  // namespace webcam
++}  // namespace android
+diff --git a/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml b/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml
+index c97ac8f21afbfdda5cdcbf627bd6daf5df5018be..af5b771363d8fc80cec686ef866e7c9070335289 100644
+--- a/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml
++++ b/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml
+@@ -19,5 +19,5 @@
+     <string name="notif_channel_name" msgid="6360649882588343016">"Service de premier plan"</string>
+     <string name="notif_ticker" msgid="6915460822395652567">"Webcam"</string>
+     <string name="notif_title" msgid="802425098359640082">"Webcam"</string>
+-    <string name="notif_desc" msgid="2524105328454274946">"Appuyez pour prévisualiser et configurer la sortie de la webcam"</string>
++    <string name="notif_desc" msgid="2524105328454274946">"Appuyez pour revenir à la webcam"</string>
+ </resources>
+diff --git a/packages/services/DeviceAsWebcam/interface/res/values/strings.xml b/packages/services/DeviceAsWebcam/interface/res/values/strings.xml
+index 399791ed9f4fca7e76c94446c5b1a9fae9961177..3da1f43fd8aa1925e505f73c6bb632fc4bf8de60 100644
+--- a/packages/services/DeviceAsWebcam/interface/res/values/strings.xml
++++ b/packages/services/DeviceAsWebcam/interface/res/values/strings.xml
+@@ -19,5 +19,5 @@
+     <string name="notif_channel_name">Foreground Service</string>
+     <string name="notif_ticker">Webcam</string>
+     <string name="notif_title">Webcam</string>
+-    <string name="notif_desc">Tap to preview and configure webcam output</string>
++    <string name="notif_desc">Tap to return to the webcam</string>
+ </resources>
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
-index 2362b8d..7855567 100644
+index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..a450e44a137ce544112034a9ea0fdcf72491bcf9 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
 @@ -26,6 +26,13 @@ import android.content.Context;
@@ -4082,13 +4448,14 @@ index 2362b8d..7855567 100644
  
      static {
          System.loadLibrary("jni_deviceAsWebcam");
-@@ -54,9 +72,16 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -54,9 +72,17 @@ public abstract class DeviceAsWebcamFgService extends Service {
  
      // Guards all methods in the service to ensure a consistent state while executing a method
      private final Object mServiceLock = new Object();
 +    private final Object mNativeLifecycleLock = new Object();
      private Context mContext;
      private WebcamController mWebcamController;
++    private UsbAudioBridge mUsbAudioBridge;
 +    private ExecutorService mSetupExecutor;
 +    private int mServiceGeneration = 0;
      private boolean mServiceRunning = false;
@@ -4099,7 +4466,7 @@ index 2362b8d..7855567 100644
  
      private NotificationCompat.Builder mNotificationBuilder;
      private int mNotificationIcon;
-@@ -66,8 +91,8 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -66,8 +92,8 @@ public abstract class DeviceAsWebcamFgService extends Service {
      /**
       * Returns the concrete implementation of the WebcamController interface that handles webcam
       * functionality. This method will be called during the service's {@link #onStartCommand} and
@@ -4110,7 +4477,7 @@ index 2362b8d..7855567 100644
       *
       * @param context context to access service resources
       * @return The WebcamController that controls the basic webcam functionality.
-@@ -86,33 +111,221 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -86,33 +112,233 @@ public abstract class DeviceAsWebcamFgService extends Service {
      @Override
      public void onCreate() {
          super.onCreate();
@@ -4120,6 +4487,9 @@ index 2362b8d..7855567 100644
 +                        runnable -> new Thread(runnable, "CaCamUvcSetup"));
 +        BootDiagnostics.install();
 +        BootDiagnostics.record("service-created");
++        if (UsbAudioBridge.isEnabled()) {
++            mUsbAudioBridge = new UsbAudioBridge(mContext);
++        }
 +        if (SystemProperties.getBoolean("ro.cacamos.appliance", false)) {
 +            Settings.Global.putInt(
 +                    getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 1);
@@ -4173,12 +4543,35 @@ index 2362b8d..7855567 100644
 +    private boolean isGenerationActiveLocked(int generation) {
 +        return mServiceRunning && !mServiceStopping && generation == mServiceGeneration;
 +    }
- 
--            mWebcamController = getWebcamController(mContext);
--            mWebcamController.registerServiceInstance(this);
++
 +    private boolean isGenerationActive(int generation) {
 +        synchronized (mServiceLock) {
 +            return isGenerationActiveLocked(generation);
++        }
++    }
++
++    private void submitSetup(Runnable operation) {
++        try {
++            mSetupExecutor.execute(operation);
++        } catch (RejectedExecutionException e) {
++            synchronized (mServiceLock) {
++                if (!mServiceStopping) {
++                    Log.e(TAG, "Unable to schedule UVC initialization", e);
++                    BootDiagnostics.recordException("setup-submit-failed", e);
++                }
++            }
++        }
++    }
+ 
+-            mWebcamController = getWebcamController(mContext);
+-            mWebcamController.registerServiceInstance(this);
++    private boolean waitForSetupRetry(int generation) {
++        try {
++            Thread.sleep(SETUP_RETRY_INTERVAL_MS);
++            return isGenerationActive(generation);
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++            return false;
 +        }
 +    }
  
@@ -4192,29 +4585,6 @@ index 2362b8d..7855567 100644
 -            // torn down once `onStartCommand` returns.
 -            if (res != 0) {
 -                stopSelf();
-+    private void submitSetup(Runnable operation) {
-+        try {
-+            mSetupExecutor.execute(operation);
-+        } catch (RejectedExecutionException e) {
-+            synchronized (mServiceLock) {
-+                if (!mServiceStopping) {
-+                    Log.e(TAG, "Unable to schedule UVC initialization", e);
-+                    BootDiagnostics.recordException("setup-submit-failed", e);
-+                }
-+            }
-+        }
-+    }
-+
-+    private boolean waitForSetupRetry(int generation) {
-+        try {
-+            Thread.sleep(SETUP_RETRY_INTERVAL_MS);
-+            return isGenerationActive(generation);
-+        } catch (InterruptedException e) {
-+            Thread.currentThread().interrupt();
-+            return false;
-+        }
-+    }
-+
 +    private String getRuntimeWaitReason() {
 +        UserManager userManager = getSystemService(UserManager.class);
 +        if (userManager == null || !userManager.isUserUnlocked()) {
@@ -4254,6 +4624,15 @@ index 2362b8d..7855567 100644
 +                    return;
 +                }
 +                continue;
++            }
++
++            synchronized (mServiceLock) {
++                if (!isGenerationActiveLocked(generation)) {
++                    return;
++                }
++                if (mUsbAudioBridge != null) {
++                    mUsbAudioBridge.start();
++                }
 +            }
 +
 +            WebcamController controller = null;
@@ -4346,7 +4725,20 @@ index 2362b8d..7855567 100644
          }
      }
  
-@@ -158,21 +371,47 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -148,7 +374,11 @@ public abstract class DeviceAsWebcamFgService extends Service {
+                         .setTicker(getString(R.string.notif_ticker))
+                         .setVisibility(Notification.VISIBILITY_PUBLIC);
+         Notification notif = mNotificationBuilder.build();
+-        startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA);
++        int foregroundServiceTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
++        if (UsbAudioBridge.isEnabled()) {
++            foregroundServiceTypes |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
++        }
++        startForeground(NOTIF_ID, notif, foregroundServiceTypes);
+     }
+ 
+     private int setupServicesAndStartListening() {
+@@ -158,21 +388,55 @@ public abstract class DeviceAsWebcamFgService extends Service {
  
      @Override
      public void onDestroy() {
@@ -4365,6 +4757,14 @@ index 2362b8d..7855567 100644
 +        }
 +        BootDiagnostics.record("service-destroying");
 +        mSetupExecutor.shutdownNow();
++        UsbAudioBridge usbAudioBridge;
++        synchronized (mServiceLock) {
++            usbAudioBridge = mUsbAudioBridge;
++            mUsbAudioBridge = null;
++        }
++        if (usbAudioBridge != null) {
++            usbAudioBridge.stop();
++        }
 +
 +        synchronized (mNativeLifecycleLock) {
 +            boolean destroyNative;
@@ -4377,9 +4777,7 @@ index 2362b8d..7855567 100644
 +            // Keep the Java controller available while native teardown returns encoded buffers.
 +            if (destroyNative) {
 +                nativeOnDestroy();
-             }
--            // Ensure that the service notification is removed.
--            NotificationManagerCompat.from(mContext).cancelAll();
++            }
 +            synchronized (mServiceLock) {
 +                mNativeServiceRunning = false;
 +                webcamController = mWebcamController;
@@ -4387,8 +4785,10 @@ index 2362b8d..7855567 100644
 +            }
 +            if (webcamController != null) {
 +                webcamController.onDestroy();
-+            }
-+        }
+             }
+-            // Ensure that the service notification is removed.
+-            NotificationManagerCompat.from(mContext).cancelAll();
+         }
 +
 +        synchronized (mServiceLock) {
 +            mServiceRunning = false;
@@ -4397,13 +4797,13 @@ index 2362b8d..7855567 100644
 +        }
 +        if (VERBOSE) {
 +            Log.v(TAG, "Destroyed fg service");
-         }
++        }
 +        NotificationManagerCompat.from(mContext).cancelAll();
 +        BootDiagnostics.record("service-destroyed");
          super.onDestroy();
      }
  
-@@ -216,7 +455,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -216,7 +480,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
  
      private void updateNotificationToNextIcon() {
          synchronized (mServiceLock) {
@@ -4412,7 +4812,7 @@ index 2362b8d..7855567 100644
                  return;
              }
  
-@@ -246,7 +485,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -246,7 +510,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
      @UsedByNative("DeviceAsWebcamNative.cpp")
      private void startStreaming() {
          synchronized (mServiceLock) {
@@ -4421,7 +4821,7 @@ index 2362b8d..7855567 100644
                  Log.e(TAG, "startStreaming was called after Service was destroyed");
                  return;
              }
-@@ -257,19 +496,81 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -257,19 +521,81 @@ public abstract class DeviceAsWebcamFgService extends Service {
  
      @UsedByNative("DeviceAsWebcamNative.cpp")
      private void stopService() {
@@ -4441,7 +4841,7 @@ index 2362b8d..7855567 100644
 +            mRestartInProgress = true;
 +            generation = ++mServiceGeneration;
 +            webcamController = mWebcamController;
-+        }
+         }
 +        BootDiagnostics.record("uvc-disconnected generation=" + generation);
 +        submitSetup(() -> restartNativeService(generation, webcamController));
 +    }
@@ -4486,7 +4886,7 @@ index 2362b8d..7855567 100644
 +                    mWebcamController = null;
 +                }
 +            }
-         }
++        }
 +
 +        if (!isGenerationActive(generation)) {
 +            return;
@@ -4506,7 +4906,7 @@ index 2362b8d..7855567 100644
                  Log.e(TAG, "stopStreaming was called after Service was destroyed");
                  return;
              }
-@@ -281,7 +582,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -281,7 +607,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
      @UsedByNative("DeviceAsWebcamNative.cpp")
      private void returnImage(long timestamp) {
          synchronized (mServiceLock) {
@@ -4515,7 +4915,7 @@ index 2362b8d..7855567 100644
                  Log.e(TAG, "returnImage was called after Service was destroyed");
                  return;
              }
-@@ -292,7 +593,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -292,7 +618,7 @@ public abstract class DeviceAsWebcamFgService extends Service {
      @UsedByNative("DeviceAsWebcamNative.cpp")
      private void setStreamConfig(boolean mjpeg, int width, int height, int fps) {
          synchronized (mServiceLock) {
@@ -4524,7 +4924,7 @@ index 2362b8d..7855567 100644
                  Log.e(TAG, "setStreamConfig was called after Service was destroyed");
                  return;
              }
-@@ -334,3 +635,105 @@ public abstract class DeviceAsWebcamFgService extends Service {
+@@ -334,3 +660,105 @@ public abstract class DeviceAsWebcamFgService extends Service {
       */
      private native void nativeOnDestroy();
  }
@@ -4631,7 +5031,7 @@ index 2362b8d..7855567 100644
 +    }
 +}
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
-index 15fd9f6..981c712 100644
+index 15fd9f65d35857fb113eea9b6896f27fd9264c76..981c712dfc6f4ad8680bbb77b1faf55ba7f5922a 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
 @@ -21,6 +21,7 @@ import android.content.Context;
@@ -4713,8 +5113,374 @@ index 15fd9f6..981c712 100644
          }
      }
  
+diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593eb3d5b2a
+--- /dev/null
++++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java
+@@ -0,0 +1,360 @@
++/*
++ * Copyright (C) 2026 CaCamOS
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.deviceaswebcam;
++
++import android.content.Context;
++import android.media.AudioAttributes;
++import android.media.AudioDeviceInfo;
++import android.media.AudioFormat;
++import android.media.AudioManager;
++import android.media.AudioRecord;
++import android.media.AudioTrack;
++import android.media.MediaRecorder;
++import android.os.Process;
++import android.os.SystemClock;
++import android.os.SystemProperties;
++import android.util.Log;
++import java.nio.ByteBuffer;
++import java.nio.ByteOrder;
++import java.util.concurrent.atomic.AtomicBoolean;
++
++/** Bridges Android's microphone and speakers to the CaCamOS UAC2 gadget PCM. */
++final class UsbAudioBridge {
++  private static final String TAG = "CaCamUsbAudio";
++  private static final int SAMPLE_RATE = 48000;
++  private static final int FRAMES_PER_CHUNK = 960;
++  private static final int BYTES_PER_SAMPLE = 2;
++  private static final int MICROPHONE_CHANNELS = 1;
++  private static final int SPEAKER_CHANNELS = 2;
++  private static final int RETRY_DELAY_MS = 1000;
++
++  private final Context mContext;
++  private final AtomicBoolean mRunning = new AtomicBoolean();
++  private final Object mAudioObjectLock = new Object();
++
++  private Thread mMicrophoneThread;
++  private Thread mSpeakerThread;
++  private AudioRecord mAudioRecord;
++  private AudioTrack mAudioTrack;
++
++  UsbAudioBridge(Context context) {
++    mContext = context.getApplicationContext();
++  }
++
++  static boolean isEnabled() {
++    return SystemProperties.getBoolean("ro.cacamos.appliance", false)
++        && SystemProperties.getBoolean("ro.usb.audio_gadget.enabled", false);
++  }
++
++  void start() {
++    if (!isEnabled() || !mRunning.compareAndSet(false, true)) {
++      return;
++    }
++    mMicrophoneThread = new Thread(this::runMicrophone, "CaCamUsbMicrophone");
++    mSpeakerThread = new Thread(this::runSpeakers, "CaCamUsbSpeakers");
++    mMicrophoneThread.start();
++    mSpeakerThread.start();
++    Log.i(TAG, "Bidirectional USB audio bridge started");
++  }
++
++  void stop() {
++    if (!mRunning.compareAndSet(true, false)) {
++      return;
++    }
++
++    synchronized (mAudioObjectLock) {
++      stopAudioRecordLocked();
++      stopAudioTrackLocked();
++    }
++    nativeReset();
++    joinQuietly(mMicrophoneThread);
++    joinQuietly(mSpeakerThread);
++    mMicrophoneThread = null;
++    mSpeakerThread = null;
++    Log.i(TAG, "Bidirectional USB audio bridge stopped");
++  }
++
++  private void runMicrophone() {
++    Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
++    final int chunkBytes = FRAMES_PER_CHUNK * MICROPHONE_CHANNELS * BYTES_PER_SAMPLE;
++    final ByteBuffer buffer = ByteBuffer.allocateDirect(chunkBytes).order(ByteOrder.nativeOrder());
++
++    while (mRunning.get()) {
++      AudioRecord record = createAudioRecord(chunkBytes);
++      if (record == null) {
++        sleepBeforeRetry();
++        continue;
++      }
++
++      synchronized (mAudioObjectLock) {
++        if (!mRunning.get()) {
++          record.release();
++          return;
++        }
++        mAudioRecord = record;
++      }
++
++      try {
++        record.startRecording();
++        if (record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
++          throw new IllegalStateException("microphone did not enter recording state");
++        }
++        Log.i(TAG, "Telephone microphone capture active");
++
++        while (mRunning.get()) {
++          buffer.clear();
++          int bytesRead = record.read(buffer, chunkBytes, AudioRecord.READ_BLOCKING);
++          if (bytesRead <= 0) {
++            if (mRunning.get()) {
++              Log.w(TAG, "Microphone read failed: " + bytesRead);
++            }
++            break;
++          }
++
++          int offset = 0;
++          while (mRunning.get() && offset < bytesRead) {
++            int written = nativeWriteMicrophone(buffer, offset, bytesRead - offset);
++            if (written <= 0) {
++              break;
++            }
++            offset += written;
++          }
++        }
++      } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
++        if (mRunning.get()) {
++          Log.w(TAG, "Microphone bridge restarting", e);
++        }
++      } finally {
++        synchronized (mAudioObjectLock) {
++          if (mAudioRecord == record) {
++            stopAudioRecordLocked();
++          } else {
++            record.release();
++          }
++        }
++      }
++      sleepBeforeRetry();
++    }
++  }
++
++  private void runSpeakers() {
++    Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
++    final int chunkBytes = FRAMES_PER_CHUNK * SPEAKER_CHANNELS * BYTES_PER_SAMPLE;
++    final ByteBuffer buffer = ByteBuffer.allocateDirect(chunkBytes).order(ByteOrder.nativeOrder());
++
++    while (mRunning.get()) {
++      AudioTrack track = createAudioTrack(chunkBytes);
++      if (track == null) {
++        sleepBeforeRetry();
++        continue;
++      }
++
++      synchronized (mAudioObjectLock) {
++        if (!mRunning.get()) {
++          track.release();
++          return;
++        }
++        mAudioTrack = track;
++      }
++
++      try {
++        track.play();
++        Log.i(TAG, "Telephone speaker playback active");
++
++        while (mRunning.get()) {
++          buffer.clear();
++          int bytesRead = nativeReadSpeakers(buffer, 0, chunkBytes);
++          if (bytesRead <= 0) {
++            SystemClock.sleep(5);
++            continue;
++          }
++
++          buffer.position(0);
++          buffer.limit(bytesRead);
++          while (mRunning.get() && buffer.hasRemaining()) {
++            int written = track.write(buffer, buffer.remaining(), AudioTrack.WRITE_BLOCKING);
++            if (written < 0) {
++              throw new IllegalStateException("speaker write failed: " + written);
++            }
++            if (written == 0) {
++              SystemClock.sleep(2);
++            }
++          }
++        }
++      } catch (IllegalArgumentException | IllegalStateException e) {
++        if (mRunning.get()) {
++          Log.w(TAG, "Speaker bridge restarting", e);
++        }
++      } finally {
++        synchronized (mAudioObjectLock) {
++          if (mAudioTrack == track) {
++            stopAudioTrackLocked();
++          } else {
++            track.release();
++          }
++        }
++      }
++      sleepBeforeRetry();
++    }
++  }
++
++  private AudioRecord createAudioRecord(int chunkBytes) {
++    int minimum =
++        AudioRecord.getMinBufferSize(
++            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
++    if (minimum <= 0) {
++      Log.w(TAG, "Unsupported microphone format: " + minimum);
++      return null;
++    }
++
++    try {
++      AudioRecord record =
++          new AudioRecord.Builder()
++              .setAudioSource(MediaRecorder.AudioSource.MIC)
++              .setAudioFormat(
++                  new AudioFormat.Builder()
++                      .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
++                      .setSampleRate(SAMPLE_RATE)
++                      .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
++                      .build())
++              .setBufferSizeInBytes(Math.max(minimum, chunkBytes * 4))
++              .build();
++      preferBuiltInDevice(record);
++      return record;
++    } catch (IllegalArgumentException | UnsupportedOperationException | SecurityException e) {
++      Log.w(TAG, "Unable to create telephone microphone capture", e);
++      return null;
++    }
++  }
++
++  private AudioTrack createAudioTrack(int chunkBytes) {
++    int minimum =
++        AudioTrack.getMinBufferSize(
++            SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
++    if (minimum <= 0) {
++      Log.w(TAG, "Unsupported speaker format: " + minimum);
++      return null;
++    }
++
++    try {
++      AudioTrack track =
++          new AudioTrack.Builder()
++              .setAudioAttributes(
++                  new AudioAttributes.Builder()
++                      .setUsage(AudioAttributes.USAGE_MEDIA)
++                      .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
++                      .build())
++              .setAudioFormat(
++                  new AudioFormat.Builder()
++                      .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
++                      .setSampleRate(SAMPLE_RATE)
++                      .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
++                      .build())
++              .setBufferSizeInBytes(Math.max(minimum, chunkBytes * 4))
++              .setTransferMode(AudioTrack.MODE_STREAM)
++              .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
++              .build();
++      preferBuiltInDevice(track);
++      return track;
++    } catch (IllegalArgumentException | UnsupportedOperationException e) {
++      Log.w(TAG, "Unable to create telephone speaker playback", e);
++      return null;
++    }
++  }
++
++  private void preferBuiltInDevice(AudioRecord record) {
++    AudioDeviceInfo device =
++        findBuiltInDevice(AudioManager.GET_DEVICES_INPUTS, AudioDeviceInfo.TYPE_BUILTIN_MIC);
++    if (device != null && !record.setPreferredDevice(device)) {
++      Log.w(TAG, "Unable to select the built-in microphone");
++    }
++  }
++
++  private void preferBuiltInDevice(AudioTrack track) {
++    AudioDeviceInfo device =
++        findBuiltInDevice(AudioManager.GET_DEVICES_OUTPUTS, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER);
++    if (device != null && !track.setPreferredDevice(device)) {
++      Log.w(TAG, "Unable to select the built-in speaker");
++    }
++  }
++
++  private AudioDeviceInfo findBuiltInDevice(int flags, int type) {
++    AudioManager manager = mContext.getSystemService(AudioManager.class);
++    if (manager == null) {
++      return null;
++    }
++    for (AudioDeviceInfo device : manager.getDevices(flags)) {
++      if (device.getType() == type) {
++        return device;
++      }
++    }
++    return null;
++  }
++
++  private void stopAudioRecordLocked() {
++    if (mAudioRecord == null) {
++      return;
++    }
++    try {
++      if (mAudioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
++        mAudioRecord.stop();
++      }
++    } catch (IllegalStateException e) {
++      Log.w(TAG, "Unable to stop microphone capture cleanly", e);
++    }
++    mAudioRecord.release();
++    mAudioRecord = null;
++  }
++
++  private void stopAudioTrackLocked() {
++    if (mAudioTrack == null) {
++      return;
++    }
++    try {
++      if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
++        mAudioTrack.stop();
++      }
++    } catch (IllegalStateException e) {
++      Log.w(TAG, "Unable to stop speaker playback cleanly", e);
++    }
++    mAudioTrack.release();
++    mAudioTrack = null;
++  }
++
++  private void sleepBeforeRetry() {
++    if (mRunning.get()) {
++      SystemClock.sleep(RETRY_DELAY_MS);
++    }
++  }
++
++  private static void joinQuietly(Thread thread) {
++    if (thread == null) {
++      return;
++    }
++    try {
++      thread.join(2000);
++    } catch (InterruptedException e) {
++      Thread.currentThread().interrupt();
++    }
++  }
++
++  private static native int nativeWriteMicrophone(ByteBuffer buffer, int offset, int length);
++
++  private static native int nativeReadSpeakers(ByteBuffer buffer, int offset, int length);
++
++  private static native void nativeReset();
++}
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
-index aaf540b..4573258 100644
+index aaf540b212f0e73d929f1dd543579aec07d9765a..4573258a17a05a0388b1ca2a10370b80e5a86aec 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
 @@ -46,8 +46,8 @@ public abstract class WebcamController {

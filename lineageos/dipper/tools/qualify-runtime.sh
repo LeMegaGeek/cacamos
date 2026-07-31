@@ -10,13 +10,15 @@ matrix_attempts="${MATRIX_ATTEMPTS:-2}"
 long_duration="${LONG_DURATION:-600}"
 rebind_attempts="${REBIND_ATTEMPTS:-5}"
 rebind_capture_duration="${REBIND_CAPTURE_DURATION:-10}"
-usb_reset_target="${USB_RESET_TARGET:-18d1:4eed}"
+usb_reset_target="${USB_RESET_TARGET:-18d1:4eef}"
 run_stream_matrix="${RUN_STREAM_MATRIX:-1}"
 run_long_capture="${RUN_LONG_CAPTURE:-1}"
 run_usb_resets="${RUN_USB_RESETS:-1}"
 run_application_tests="${RUN_APPLICATION_TESTS:-1}"
 run_obs_test="${RUN_OBS_TEST:-1}"
 run_rapid_reopen="${RUN_RAPID_REOPEN:-1}"
+run_settings_return_test="${RUN_SETTINGS_RETURN_TEST:-1}"
+run_audio_tests="${RUN_AUDIO_TESTS:-1}"
 rapid_reopen_attempts="${RAPID_REOPEN_ATTEMPTS:-20}"
 report_dir="${REPORT_DIR:-$project_root/dist/cacam-os-qualifications}"
 
@@ -38,8 +40,10 @@ for command in "$adb_bin" fuser grep rg usbreset v4l2-ctl; do
 done
 for script in \
     find-cacamos-webcam.sh \
+    test-settings-return.sh \
     test-host-applications.sh \
     test-host-obs.sh \
+    test-host-usb-audio.sh \
     test-host-uvc-reopen.sh \
     test-host-uvc-stream.sh \
     verify-webcam.sh; do
@@ -57,6 +61,8 @@ require_boolean RUN_USB_RESETS "$run_usb_resets"
 require_boolean RUN_APPLICATION_TESTS "$run_application_tests"
 require_boolean RUN_OBS_TEST "$run_obs_test"
 require_boolean RUN_RAPID_REOPEN "$run_rapid_reopen"
+require_boolean RUN_SETTINGS_RETURN_TEST "$run_settings_return_test"
+require_boolean RUN_AUDIO_TESTS "$run_audio_tests"
 
 if [[ -z "$adb_serial" ]]; then
     mapfile -t android_serials < <(
@@ -135,12 +141,26 @@ printf 'run_usb_resets=%s\n' "$run_usb_resets"
 printf 'run_application_tests=%s\n' "$run_application_tests"
 printf 'run_obs_test=%s\n' "$run_obs_test"
 printf 'run_rapid_reopen=%s\n' "$run_rapid_reopen"
+printf 'run_settings_return_test=%s\n' "$run_settings_return_test"
+printf 'run_audio_tests=%s\n' "$run_audio_tests"
 
 "$script_dir/verify-webcam.sh" "$run_dir"
+
+if [[ "$run_settings_return_test" -eq 1 ]]; then
+    printf '\nSettings return to webcam\n'
+    ADB_SERIAL="$adb_serial" \
+        "$script_dir/test-settings-return.sh" "$run_dir/settings-return"
+fi
 
 host_device="$("$script_dir/find-cacamos-webcam.sh")"
 if fuser "$host_device" >/dev/null 2>&1; then
     fail "$host_device is already in use; close every camera application before qualification"
+fi
+
+if [[ "$run_audio_tests" -eq 1 ]]; then
+    printf '\nStandard USB microphone and speakers with simultaneous UVC\n'
+    V4L2_DEVICE="$host_device" \
+        "$script_dir/test-host-usb-audio.sh" "$run_dir/audio"
 fi
 
 boot_id_before="$(adb_exec shell cat /proc/sys/kernel/random/boot_id | tr -d '\r')"

@@ -57,6 +57,9 @@ fi
 
 lineage_root="$(cd "$lineage_root" && pwd)"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cacamos_version="$(tr -d '\r\n' < "$script_dir/../VERSION")"
+[[ "$cacamos_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+    fail "invalid CaCamOS version: $cacamos_version"
 
 device_mk="$lineage_root/device/xiaomi/dipper/device.mk"
 device_product="$lineage_root/device/xiaomi/dipper/lineage_dipper.mk"
@@ -64,21 +67,27 @@ device_board_config="$lineage_root/device/xiaomi/dipper/BoardConfig.mk"
 device_bootanimation="$lineage_root/device/xiaomi/dipper/bootanimation/bootanimation.zip"
 device_init="$lineage_root/device/xiaomi/dipper/init/init.target.rc"
 device_boot_probe="$lineage_root/device/xiaomi/dipper/init/cacamos_boot_probe.sh"
+device_default_permissions="$lineage_root/device/xiaomi/dipper/permissions/default-permissions-cacamos.xml"
 device_privapp_permissions="$lineage_root/device/xiaomi/dipper/permissions/privapp-permissions-cacamos.xml"
 device_vendor_prop="$lineage_root/device/xiaomi/dipper/vendor.prop"
 settings_defaults_overlay="$lineage_root/device/xiaomi/dipper/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml"
 kernel_base_config="$lineage_root/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xiaomi/mi845_defconfig"
 kernel_device_config="$lineage_root/kernel/xiaomi/sdm845/arch/arm64/configs/vendor/xiaomi/dipper.config"
+kernel_uac2_function="$lineage_root/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uac2.c"
+kernel_uac2_header="$lineage_root/kernel/xiaomi/sdm845/drivers/usb/gadget/function/u_uac2.h"
 kernel_uvc_header="$lineage_root/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc.h"
 kernel_uvc_function="$lineage_root/kernel/xiaomi/sdm845/drivers/usb/gadget/function/f_uvc.c"
 kernel_uvc_queue="$lineage_root/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_queue.c"
 kernel_uvc_video="$lineage_root/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_video.c"
 kernel_uvc_v4l2="$lineage_root/kernel/xiaomi/sdm845/drivers/usb/gadget/function/uvc_v4l2.c"
 usb_gadget_hal="$lineage_root/vendor/qcom/opensource/usb/hal/UsbGadget.cpp"
+usb_gadget_compositions="$lineage_root/vendor/qcom/opensource/usb/hal/usb_compositions.conf"
 usb_gadget_init="$lineage_root/vendor/qcom/opensource/usb/etc/init.qcom.usb.rc"
 usb_gadget_policy="$lineage_root/system/sepolicy/private/hal_usb_gadget.te"
 adbd_policy="$lineage_root/system/sepolicy/private/adbd.te"
 webcam_policy="$lineage_root/system/sepolicy/private/device_as_webcam.te"
+app_policy="$lineage_root/system/sepolicy/private/app.te"
+property_contexts="$lineage_root/system/sepolicy/private/property_contexts"
 system_usb_init="$lineage_root/system/core/rootdir/init.usb.rc"
 system_init="$lineage_root/system/core/rootdir/init.rc"
 usb_device_manager="$lineage_root/frameworks/base/services/usb/java/com/android/server/usb/UsbDeviceManager.java"
@@ -89,6 +98,11 @@ framework_adb_manager="$lineage_root/frameworks/base/services/core/java/com/andr
 adbd_main="$lineage_root/packages/modules/adb/daemon/main.cpp"
 settings_wireless_debugging="$lineage_root/packages/apps/Settings/src/com/android/settings/development/WirelessDebuggingEnabler.java"
 settings_usb_debugging="$lineage_root/packages/apps/Settings/src/com/android/settings/development/AdbPreferenceController.java"
+settings_webcam_controller="$lineage_root/packages/apps/Settings/src/com/android/settings/homepage/CaCamOsWebcamPreferenceController.java"
+settings_top_level="$lineage_root/packages/apps/Settings/res/xml/top_level_settings.xml"
+settings_top_level_v2="$lineage_root/packages/apps/Settings/res/xml/top_level_settings_v2.xml"
+settings_strings="$lineage_root/packages/apps/Settings/res/values/strings.xml"
+settings_strings_fr="$lineage_root/packages/apps/Settings/res/values-fr/strings.xml"
 webcam_pkg="$lineage_root/packages/services/DeviceAsWebcam"
 webcam_manifest="$webcam_pkg/impl/AndroidManifest.xml"
 webcam_layout="$webcam_pkg/impl/res/layout/preview_layout.xml"
@@ -106,6 +120,11 @@ webcam_rotation="$webcam_pkg/impl/src/com/android/deviceaswebcam/RotationProvide
 webcam_prefs="$webcam_pkg/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java"
 webcam_receiver="$webcam_pkg/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java"
 webcam_service="$webcam_pkg/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java"
+webcam_audio_bridge="$webcam_pkg/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java"
+webcam_audio_native="$webcam_pkg/interface/jni/UsbAudioBridge.cpp"
+webcam_jni_build="$webcam_pkg/interface/jni/Android.bp"
+webcam_interface_strings="$webcam_pkg/interface/res/values/strings.xml"
+webcam_interface_strings_fr="$webcam_pkg/interface/res/values-fr/strings.xml"
 webcam_sdk_provider="$webcam_pkg/interface/jni/SdkFrameProvider.cpp"
 webcam_sdk_provider_header="$webcam_pkg/interface/jni/SdkFrameProvider.h"
 webcam_service_manager="$webcam_pkg/interface/jni/DeviceAsWebcamServiceManager.cpp"
@@ -134,6 +153,11 @@ build_soong="$lineage_root/build/soong/ui/build/soong.go"
 recovery_main="$lineage_root/bootable/recovery/recovery_main.cpp"
 host_uvc_test="$script_dir/test-host-uvc-stream.sh"
 host_uvc_reopen_test="$script_dir/test-host-uvc-reopen.sh"
+host_webcam_finder="$script_dir/find-cacamos-webcam.sh"
+host_audio_finder="$script_dir/find-cacamos-audio.sh"
+host_audio_test="$script_dir/test-host-usb-audio.sh"
+runtime_qualifier="$script_dir/qualify-runtime.sh"
+settings_return_test="$script_dir/test-settings-return.sh"
 
 for file in \
     "$device_mk" \
@@ -142,21 +166,27 @@ for file in \
     "$device_bootanimation" \
     "$device_init" \
     "$device_boot_probe" \
+    "$device_default_permissions" \
     "$device_privapp_permissions" \
     "$device_vendor_prop" \
     "$settings_defaults_overlay" \
     "$kernel_base_config" \
     "$kernel_device_config" \
+    "$kernel_uac2_function" \
+    "$kernel_uac2_header" \
     "$kernel_uvc_header" \
     "$kernel_uvc_function" \
     "$kernel_uvc_queue" \
     "$kernel_uvc_video" \
     "$kernel_uvc_v4l2" \
     "$usb_gadget_hal" \
+    "$usb_gadget_compositions" \
     "$usb_gadget_init" \
     "$usb_gadget_policy" \
     "$adbd_policy" \
     "$webcam_policy" \
+    "$app_policy" \
+    "$property_contexts" \
     "$system_usb_init" \
     "$system_init" \
     "$usb_device_manager" \
@@ -167,6 +197,11 @@ for file in \
     "$adbd_main" \
     "$settings_wireless_debugging" \
     "$settings_usb_debugging" \
+    "$settings_webcam_controller" \
+    "$settings_top_level" \
+    "$settings_top_level_v2" \
+    "$settings_strings" \
+    "$settings_strings_fr" \
     "$webcam_manifest" \
     "$webcam_layout" \
     "$webcam_strings" \
@@ -183,6 +218,11 @@ for file in \
     "$webcam_prefs" \
     "$webcam_receiver" \
     "$webcam_service" \
+    "$webcam_audio_bridge" \
+    "$webcam_audio_native" \
+    "$webcam_jni_build" \
+    "$webcam_interface_strings" \
+    "$webcam_interface_strings_fr" \
     "$webcam_sdk_provider" \
     "$webcam_sdk_provider_header" \
     "$webcam_service_manager" \
@@ -191,6 +231,11 @@ for file in \
     "$uvc_provider_header" \
     "$host_uvc_test" \
     "$host_uvc_reopen_test" \
+    "$host_webcam_finder" \
+    "$host_audio_finder" \
+    "$host_audio_test" \
+    "$runtime_qualifier" \
+    "$settings_return_test" \
     "$usb_default_overlay" \
     "$lineage_common" \
     "$lineage_common_phone" \
@@ -225,11 +270,16 @@ require_fixed "$device_mk" "CaCamOsDeviceAsWebcamDipper" \
     "the dipper DeviceAsWebcam overlay is not included"
 require_fixed "$device_mk" "ro.usb.uvc.enabled=true" \
     "ro.usb.uvc.enabled=true is not set"
+require_fixed "$device_mk" "ro.usb.audio_gadget.enabled=true" \
+    "the CaCamOS USB audio gadget is not enabled"
 require_fixed "$device_mk" "ro.usb.uvc.disable_video_encode_flag=true" \
     "the unsupported camera VIDEO_ENCODE flag is still enabled"
 require_fixed "$device_mk" \
     'init/cacamos_boot_probe.sh:$(TARGET_COPY_OUT_SYSTEM)/bin/cacamos_boot_probe.sh' \
     "the autonomous boot probe is not installed"
+require_fixed "$device_mk" \
+    'permissions/default-permissions-cacamos.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/default-permissions/default-permissions-cacamos.xml' \
+    "the DeviceAsWebcam runtime-permission grant is not installed"
 require_fixed "$device_mk" \
     'permissions/privapp-permissions-cacamos.xml:$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/privapp-permissions-cacamos.xml' \
     "the DeviceAsWebcam privileged-permission allowlist is not installed"
@@ -270,6 +320,30 @@ permissions = {node.get("name") for node in entry.findall("permission")}
 if permissions != {"android.permission.WRITE_SECURE_SETTINGS"}:
     raise SystemExit(f"unexpected DeviceAsWebcam privileged grants: {sorted(permissions)}")
 PY
+python3 - "$device_default_permissions" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+entries = root.findall("exception")
+if len(entries) != 1:
+    raise SystemExit("CaCamOS default permissions must contain one package")
+entry = entries[0]
+if entry.get("package") != "com.android.DeviceAsWebcam":
+    raise SystemExit("CaCamOS default permissions target the wrong package")
+permissions = {
+    (node.get("name"), node.get("fixed"))
+    for node in entry.findall("permission")
+}
+expected = {
+    ("android.permission.CAMERA", "true"),
+    ("android.permission.RECORD_AUDIO", "true"),
+}
+if permissions != expected:
+    raise SystemExit(
+        f"unexpected DeviceAsWebcam runtime grants: {sorted(permissions)}"
+    )
+PY
 require_fixed "$device_product" "CACAMOS_APPLIANCE := true" \
     "the dedicated CaCamOS package graph is not enabled"
 require_fixed "$device_product" "PRODUCT_NO_CAMERA := true" \
@@ -278,8 +352,8 @@ require_fixed "$device_product" "ro.setupwizard.mode=DISABLED" \
     "the setup wizard is not disabled"
 require_fixed "$device_product" "ro.cacamos.appliance=true" \
     "the appliance runtime property is missing"
-require_fixed "$device_product" "ro.cacamos.version=1.0.0" \
-    "the product is not versioned as CaCamOS 1.0.0"
+require_fixed "$device_product" "ro.cacamos.version=$cacamos_version" \
+    "the product is not versioned as CaCamOS $cacamos_version"
 require_fixed "$device_product" "PRODUCT_MODEL := CaCamOS MI 8 Webcam" \
     "the Android product identity is not CaCamOS"
 require_fixed "$device_product" "PRODUCT_BRAND := CaCamOS" \
@@ -492,7 +566,7 @@ for path, text, variable in (
             f"{path} does not retain the NFC API jar without its appliance service"
         )
 PY
-ok "CaCamOS 1.0.0 identity, branded boot and dedicated package graph"
+ok "CaCamOS $cacamos_version identity, branded boot and dedicated package graph"
 
 require_fixed "$usb_default_overlay" '<bool name="config_usbDefaultToUvc">true</bool>' \
     "dipper does not default USB to UVC"
@@ -523,15 +597,15 @@ require_fixed "$adbd_main" 'GetBoolProperty("ro.usb.uvc.enabled", false)' \
     "adbd does not apply the immutable UVC-only product policy"
 require_fixed "$adbd_main" "#if !defined(__ANDROID_RECOVERY__)" \
     "the UVC-only adbd policy would also disable recovery sideload"
-require_fixed "$adbd_main" "USB FunctionFS transport disabled by CaCamOS UVC-only policy" \
-    "adbd UVC-only cable suppression is not diagnosable"
+require_fixed "$adbd_main" "USB FunctionFS transport disabled by CaCamOS USB AV-only policy" \
+    "adbd USB AV-only cable suppression is not diagnosable"
 require_fixed "$adbd_main" "generic fallback below cannot expose an unauthenticated TCP port" \
     "adbd can expose its generic TCP fallback when the USB endpoint is absent"
 require_fixed "$adbd_policy" "get_prop(adbd, usb_uvc_enabled_prop)" \
     "SELinux prevents adbd from reading the immutable UVC-only product policy"
 forbid_fixed "$device_init" "vendor.sys.usb.adb.disabled" \
     "the obsolete property-race workaround still exists in the device init"
-ok "UVC-only cable policy and automatic startup"
+ok "USB audio/video-only cable policy and automatic startup"
 
 require_fixed "$framework_adb_service" "WIFI_PERSISTENT_CONFIG_PROPERTY" \
     "AdbService does not persist wireless debugging"
@@ -550,6 +624,35 @@ require_fixed "$settings_wireless_debugging" "shouldKeepAdbWifiEnabledWithoutNet
     "Settings still clears wireless debugging when Wi-Fi is temporarily absent"
 require_fixed "$settings_usb_debugging" "isUsbAdbDisabledByProduct" \
     "Settings still exposes USB debugging on the UVC-only appliance"
+require_fixed "$settings_webcam_controller" "ro.cacamos.appliance" \
+    "the Settings webcam return action is not restricted to CaCamOS"
+require_fixed "$settings_webcam_controller" \
+    "com.android.deviceaswebcam.DeviceAsWebcamPreview" \
+    "the Settings webcam return action targets the wrong activity"
+require_fixed "$settings_webcam_controller" "Intent.FLAG_ACTIVITY_CLEAR_TOP" \
+    "the Settings webcam return action cannot reuse the appliance HOME task"
+for file in "$settings_top_level" "$settings_top_level_v2"; do
+    require_fixed "$file" 'android:key="top_level_cacamos_webcam"' \
+        "Settings lacks the CaCamOS webcam return entry in $file"
+    require_fixed "$file" \
+        "com.android.settings.homepage.CaCamOsWebcamPreferenceController" \
+        "Settings does not connect its webcam return action in $file"
+done
+require_fixed "$settings_strings" \
+    '<string name="cacamos_return_to_webcam_title">Return to webcam</string>' \
+    "Settings lacks the default webcam return label"
+require_fixed "$settings_strings_fr" \
+    '<string name="cacamos_return_to_webcam_title">"Retour à la webcam"</string>' \
+    "Settings lacks the French webcam return label"
+require_fixed "$webcam_interface_strings" \
+    '<string name="notif_desc">Tap to return to the webcam</string>' \
+    "the webcam notification does not describe its return action"
+require_fixed "$webcam_interface_strings_fr" \
+    '"Appuyez pour revenir à la webcam"' \
+    "the French webcam notification does not describe its return action"
+require_fixed "$settings_return_test" \
+    'Settings exposes one-tap return to the running webcam preview' \
+    "the physical Settings return regression is not covered"
 ok "persistent ADB over Wi-Fi and hidden USB debugging policy"
 
 for file in Android.bp AndroidManifest.xml \
@@ -581,6 +684,9 @@ require_fixed "$lineage_root/frameworks/base/core/java/android/hardware/usb/UsbM
     "USB_FUNCTION_UVC" "framework UsbManager does not expose UVC"
 require_fixed "$lineage_root/system/sepolicy/private/property_contexts" \
     "ro.usb.uvc.enabled" "SELinux property context for UVC is missing"
+require_fixed "$property_contexts" \
+    "ro.usb.audio_gadget.enabled u:object_r:usb_uvc_enabled_prop:s0 exact bool" \
+    "SELinux property context for the USB audio gadget is missing"
 require_fixed "$lineage_root/system/sepolicy/private/system_server.te" \
     "get_prop(system_server, usb_uvc_enabled_prop)" \
     "system_server cannot read the UVC policy property"
@@ -588,10 +694,65 @@ require_fixed "$usb_gadget_hal" "GadgetFunction::UVC" \
     "QTI USB gadget HAL does not handle UVC"
 require_fixed "$usb_gadget_hal" "uvc.0" \
     "QTI USB gadget HAL does not link the UVC function"
+require_fixed "$usb_gadget_hal" 'USB_AUDIO_ENABLED_PROP "ro.usb.audio_gadget.enabled"' \
+    "QTI USB gadget HAL does not gate the CaCamOS audio composition"
+require_fixed "$usb_gadget_hal" 'linkFunction("uac2.0", i++)' \
+    "QTI USB gadget HAL does not link UAC2 with UVC"
+require_fixed "$usb_gadget_hal" 'WriteStringToFile("0xEF", DEVICE_CLASS_PATH)' \
+    "the composite gadget does not advertise the Windows IAD device class"
+require_fixed "$usb_gadget_hal" 'WriteStringToFile("0x02", DEVICE_SUB_CLASS_PATH)' \
+    "the composite gadget does not advertise the Windows IAD subclass"
+require_fixed "$usb_gadget_hal" 'WriteStringToFile("0x01", DEVICE_PROTOCOL_PATH)' \
+    "the composite gadget does not advertise the Windows IAD protocol"
+require_fixed "$usb_gadget_hal" 'pid = "0x4eef"' \
+    "the UVC and UAC2 composition does not use the CaCamOS product ID"
+require_fixed "$usb_gadget_hal" 'pid = "0x4ef0"' \
+    "the UVC, UAC2 and ADB composition does not use the CaCamOS product ID"
+require_fixed "$usb_gadget_compositions" $'uvc,uac2\t' \
+    "the UVC and UAC2 composition has no stable USB identity"
+require_fixed "$usb_gadget_init" \
+    "/config/usb_gadget/g1/functions/uac2.0/p_chmask 1" \
+    "the host microphone is not configured as mono UAC2"
+require_fixed "$usb_gadget_init" \
+    "/config/usb_gadget/g1/functions/uac2.0/c_chmask 3" \
+    "the host playback path is not configured as stereo UAC2"
 require_fixed "$usb_gadget_policy" \
     "get_prop(hal_usb_gadget_server, usb_uvc_enabled_prop)" \
     "USB gadget HAL cannot read the UVC policy property"
-ok "framework, HAL and SELinux UVC path"
+require_fixed "$host_webcam_finder" \
+    'product_id="${CACAMOS_USB_PRODUCT_ID:-4eef}"' \
+    "the Linux webcam finder still targets the video-only USB product"
+require_fixed "$host_audio_finder" \
+    'product_id="${CACAMOS_USB_PRODUCT_ID:-4eef}"' \
+    "the Linux audio finder does not target the composite USB product"
+require_fixed "$host_audio_test" \
+    'arecord --quiet --device="$capture_pcm"' \
+    "the Linux qualification does not capture the standard USB microphone"
+require_fixed "$host_audio_test" \
+    'aplay --quiet --device="$playback_pcm"' \
+    "the Linux qualification does not exercise the standard USB speakers"
+require_fixed "$host_audio_test" \
+    'rate != 48_000' \
+    "the Linux audio qualification does not enforce 48 kHz PCM"
+require_fixed "$host_audio_test" \
+    '--stream-count="$frame_count"' \
+    "the Linux audio qualification does not keep UVC active"
+require_fixed "$runtime_qualifier" \
+    'run_audio_tests="${RUN_AUDIO_TESTS:-1}"' \
+    "the complete runtime qualification omits USB audio by default"
+require_fixed "$runtime_qualifier" \
+    'usb_reset_target="${USB_RESET_TARGET:-18d1:4eef}"' \
+    "the complete runtime qualification still resets the video-only USB product"
+require_fixed "$script_dir/verify-webcam.sh" \
+    "CONFIG_USB_CONFIGFS_F_UAC2=y" \
+    "the installed-system verifier omits the UAC2 kernel"
+require_fixed "$script_dir/verify-webcam.sh" \
+    'lsusb -v -d 18d1:4eef' \
+    "the installed-system verifier does not inspect the composite USB descriptors"
+require_fixed "$script_dir/verify-webcam.sh" \
+    'dumpsys package check-permission' \
+    "the installed-system verifier does not check the microphone grant"
+ok "framework, HAL and SELinux composite UVC/UAC2 path"
 
 python3 - "$webcam_manifest" <<'PY'
 import sys
@@ -607,6 +768,8 @@ expected = {
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.CAMERA",
     "android.permission.FOREGROUND_SERVICE_CAMERA",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.WRITE_SECURE_SETTINGS",
 }
@@ -664,6 +827,8 @@ if activity.get(ANDROID + "launchMode") != "singleTask":
     raise SystemExit("webcam HOME activity is not singleTask")
 if service.get(ANDROID + "exported") != "false":
     raise SystemExit("webcam foreground service is exported")
+if service.get(ANDROID + "foregroundServiceType") != "camera|microphone":
+    raise SystemExit("webcam service is not declared for camera and microphone")
 PY
 for permission in \
     android.permission.START_ACTIVITIES_FROM_BACKGROUND \
@@ -709,6 +874,45 @@ require_fixed "$webcam_service" "mNativeLifecycleLock" \
     "native setup and teardown can overlap"
 forbid_fixed "$webcam_service" "stopSelf();" \
     "UVC disconnect still destroys the dedicated webcam service"
+require_fixed "$webcam_service" "mUsbAudioBridge.start()" \
+    "the audio bridge is not started with the appliance service"
+require_fixed "$webcam_service" "mUsbAudioBridge = null" \
+    "the audio bridge is not detached during service shutdown"
+require_fixed "$webcam_service" "FOREGROUND_SERVICE_TYPE_MICROPHONE" \
+    "the running foreground service does not declare microphone use"
+require_fixed "$webcam_audio_bridge" \
+    'SystemProperties.getBoolean("ro.usb.audio_gadget.enabled", false)' \
+    "the Android audio bridge is not gated by the product property"
+require_fixed "$webcam_audio_bridge" "AudioRecord.Builder()" \
+    "the telephone microphone is not captured through AudioRecord"
+require_fixed "$webcam_audio_bridge" "AudioTrack.Builder()" \
+    "host playback is not rendered through AudioTrack"
+require_fixed "$webcam_audio_bridge" "SAMPLE_RATE = 48000" \
+    "the Android audio bridge is not fixed at the UAC2 sample rate"
+require_fixed "$webcam_audio_bridge" "TYPE_BUILTIN_MIC" \
+    "the bridge does not prefer the telephone microphone"
+require_fixed "$webcam_audio_bridge" "TYPE_BUILTIN_SPEAKER" \
+    "the bridge does not prefer the telephone speaker"
+require_fixed "$webcam_audio_native" 'trimmedId == "UAC2Gadget"' \
+    "the native bridge cannot discover the sanitized UAC2 ALSA card ID"
+require_fixed "$webcam_audio_native" "O_NONBLOCK" \
+    "UAC2 device loss can block the persistent webcam service"
+require_fixed "$webcam_audio_native" "POLLERR | POLLHUP | POLLNVAL" \
+    "the native bridge does not recover from USB audio disconnects"
+require_fixed "$webcam_jni_build" '"libtinyalsa"' \
+    "the DeviceAsWebcam JNI library does not link tinyalsa"
+require_fixed "$webcam_policy" \
+    "allow device_as_webcam audio_device:chr_file rw_file_perms;" \
+    "DeviceAsWebcam cannot access the dedicated UAC2 ALSA PCM"
+require_fixed "$webcam_policy" "r_dir_file(device_as_webcam, proc_asound)" \
+    "DeviceAsWebcam cannot discover the UAC2 ALSA card"
+require_fixed "$webcam_policy" "audioserver_service" \
+    "DeviceAsWebcam cannot connect to Android's audio services"
+require_fixed "$webcam_policy" "mediametrics_service" \
+    "DeviceAsWebcam cannot initialize Android audio metrics without delay"
+require_fixed "$app_policy" "-device_as_webcam" \
+    "the raw ALSA exception is not restricted to DeviceAsWebcam"
+ok "self-healing 48 kHz microphone and speaker bridge"
 require_fixed "$webcam_service" 'SystemProperties.getBoolean("ro.cacamos.appliance", false)' \
     "appliance-only maintenance setup is not product-gated"
 require_fixed "$webcam_service" "Settings.Global.DEVELOPMENT_SETTINGS_ENABLED" \
@@ -1193,6 +1397,30 @@ ok "strict host frame-rate acceptance window"
 
 require_fixed "$kernel_device_config" "CONFIG_USB_CONFIGFS_F_UVC=y" \
     "dipper kernel config lacks CONFIG_USB_CONFIGFS_F_UVC=y"
+require_fixed "$kernel_device_config" "CONFIG_USB_CONFIGFS_F_UAC2=y" \
+    "dipper kernel config lacks CONFIG_USB_CONFIGFS_F_UAC2=y"
+require_fixed "$kernel_uac2_function" "static bool enable_capture = true;" \
+    "the UAC2 host-to-telephone speaker direction is disabled"
+require_fixed "$kernel_uac2_function" "UAC_INPUT_TERMINAL_MICROPHONE" \
+    "the UAC2 input terminal is not identified as a microphone"
+require_fixed "$kernel_uac2_function" "UAC_OUTPUT_TERMINAL_SPEAKER" \
+    "the UAC2 output terminal is not identified as a speaker"
+require_fixed "$kernel_uac2_function" '"CaCamOS Microphone"' \
+    "the UAC2 microphone does not carry the CaCamOS identity"
+require_fixed "$kernel_uac2_function" '"CaCamOS Speakers"' \
+    "the UAC2 speakers do not carry the CaCamOS identity"
+if [[ "$(grep -Fc \
+    'USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ADAPTIVE' \
+    "$kernel_uac2_function")" -lt 2 ]]; then
+    fail "the UAC2 host playback endpoint is not adaptive at every USB speed"
+fi
+if sed -n '/fs_epout_desc = {/,/^};/p; /hs_epout_desc = {/,/^};/p' \
+    "$kernel_uac2_function" |
+    grep -Fq "USB_ENDPOINT_SYNC_ASYNC"; then
+    fail "the UAC2 host playback endpoint still requires unsupported implicit feedback"
+fi
+require_fixed "$kernel_uac2_header" "#define UAC2_DEF_CSRATE 48000" \
+    "the UAC2 capture default is not 48 kHz"
 for option in CONFIG_USB_GADGET=y CONFIG_USB_CONFIGFS=y CONFIG_MEDIA_SUPPORT=y; do
     require_fixed "$kernel_base_config" "$option" \
         "mi845 base kernel config lacks $option"
@@ -1341,4 +1569,4 @@ forbid_fixed "$kernel_uvc_video" "schedule_work(&video->pump)" \
 ok "frame-paced UVC scheduler, bounded DWC3 queue and shutdown drain"
 
 printf '\nPASS: CaCamOS source tree satisfies the static pre-build gates.\n'
-printf 'Runtime WebRTC, VLC, OBS and UVC endurance validation is still required after installation.\n'
+printf 'Runtime UAC2, WebRTC, VLC, OBS and UVC endurance validation is still required after installation.\n'
