@@ -1,189 +1,124 @@
-# CaCam OS for Xiaomi Mi 10 Pro (`cmi`)
+# CaCamOS for Xiaomi Mi 10 Pro (`cmi`)
 
-This directory contains the LineageOS-side integration for turning a Xiaomi Mi
-10 Pro into a real USB webcam through Android's `DeviceAsWebcam` service.
-
-It is not a Play Store app variant. It is a ROM/addon integration: the phone
-advertises the standard USB Video Class gadget function, so Linux, Windows,
-macOS, OBS and browser video inputs see the phone as a normal webcam.
+This directory contains the complete LineageOS-side integration for turning a
+Xiaomi Mi 10 Pro into a dedicated standard USB webcam, microphone and speaker.
+The host uses its built-in UVC and UAC2 drivers; BGOBS and network streaming are
+not involved.
 
 ## Target
 
 - Device: Xiaomi Mi 10 Pro
 - Codename: `cmi`
-- Platform: Qualcomm `sm8250` / `kona`
-- LineageOS branch checked: `lineage-23.2`
-- Kernel requirement: already satisfied on LineageOS `android_kernel_xiaomi_sm8250`
+- Platform: Qualcomm Snapdragon 865 / `sm8250`
+- Base: LineageOS 23.2 / Android 16
+- CaCamOS source release: `1.2.0`
 
-The checked kernel config already exposes the required options:
+The kernel already enables the required gadget functions:
 
 ```text
-CONFIG_MEDIA_USB_SUPPORT=y
-CONFIG_USB_VIDEO_CLASS=y
 CONFIG_USB_CONFIGFS_F_UVC=y
+CONFIG_USB_CONFIGFS_F_UAC2=y
 ```
 
-## Integration
+CaCamOS extends that baseline with the robust UVC request pipeline, standard
+USB audio descriptors and Android appliance behavior qualified on the MI8.
 
-Prepare the LineageOS workspace from the CaCamOS repository root:
+## Appliance Behavior
+
+- CaCamOS boot branding and automatic webcam preview.
+- No lock screen, setup wizard, generic launcher, browser, gallery or music app.
+- UVC video and UAC2 audio own the physical USB cable.
+- Authenticated ADB maintenance remains available over Wi-Fi.
+- Settings contains a direct return-to-webcam action.
+- Recovery enables ADB for appliance maintenance.
+
+The advertised video modes are MJPEG 1280x720, 1024x576 and 1920x1080 at 15
+and 30 FPS. The regular front-camera Camera2 path tops out at 30 FPS; the
+camera's constrained high-speed modes are deliberately not advertised as
+ordinary UVC modes without a dedicated high-speed capture-session path.
+
+## Source Integration
+
+Prepare a full LineageOS workspace:
 
 ```bash
-./tools/prepare-lineage-workspace.sh --init cmi /home/denis/Documents/Denis/dev/lineage-cmi
-./tools/prepare-lineage-workspace.sh --local-manifest cmi /home/denis/Documents/Denis/dev/lineage-cmi
-./tools/prepare-lineage-workspace.sh --sync cmi /home/denis/Documents/Denis/dev/lineage-cmi
+./tools/prepare-lineage-workspace.sh --init cmi /path/to/lineage-cmi
+./tools/prepare-lineage-workspace.sh --local-manifest cmi /path/to/lineage-cmi
+./tools/prepare-lineage-workspace.sh --sync cmi /path/to/lineage-cmi
 ```
 
-For a source-only preflight before the full ROM sync:
+Apply the complete patch series:
 
 ```bash
-./tools/prepare-lineage-workspace.sh --sync-webcam-deps cmi /home/denis/Documents/Denis/dev/lineage-cmi
-./lineageos/cmi/tools/check-lineage-source-preflight.sh /home/denis/Documents/Denis/dev/lineage-cmi
+./lineageos/cmi/tools/install-into-lineage.sh /path/to/lineage-cmi
 ```
 
-If a deliberately partial sync was interrupted, `--allow-partial` reports
-missing large projects as warnings. Do not use that mode as final build proof.
-
-Recommended path from this CaCamOS repository:
+The fourteen patches are tied to exact audited LineageOS revisions. Verify that
+they reproduce the current worktrees and that all appliance invariants hold:
 
 ```bash
-./lineageos/cmi/tools/install-into-lineage.sh /path/to/lineageos
+./lineageos/cmi/tools/verify-patch-series.sh \
+  --match-worktrees /path/to/lineage-cmi
+./lineageos/cmi/tools/verify-source-tree.sh /path/to/lineage-cmi
 ```
 
-Or apply the patch manually from the root of a synced LineageOS tree:
+## Controlled Build
+
+The qualified 16-core host profile uses ten workers and leaves six cores free:
 
 ```bash
-git apply /path/to/cacamos/lineageos/cmi/patches/0001-cmi-enable-cacam-os-webcam.patch
+./lineageos/cmi/tools/build-lineage-gentle.sh \
+  --lineage-root /path/to/lineage-cmi \
+  --target bacon \
+  --jobs 10 \
+  --cpu-set 0-9 \
+  --reserve-cores 6 \
+  --go-memlimit-mib 18432 \
+  --min-free-mem-mib 5120 \
+  --min-free-swap-mib 32768
 ```
 
-Verify the source tree before building:
-
-```bash
-/path/to/cacamos/lineageos/cmi/tools/verify-source-tree.sh /path/to/lineageos
-```
-
-Then build normally:
-
-```bash
-source build/envsetup.sh
-breakfast cmi
-mka bacon
-```
-
-Host prerequisites and the current machine audit are tracked in
-`BUILD_REQUIREMENTS.md`. Run this from a candidate LineageOS root:
-
-```bash
-/path/to/cacamos/lineageos/cmi/tools/check-build-host.sh
-```
-
-The patch does three things:
-
-- Adds the privileged `DeviceAsWebcam` package to the `cmi` product.
-- Enables UVC advertisement through `ro.usb.uvc.enabled=true`.
-- Adds a `CaCamOsDeviceAsWebcamCmi` overlay placeholder for future camera
-  physical-ID tuning.
-
-The installer refuses to continue if the target tree does not contain the
-LineageOS `cmi` device tree, `packages/services/DeviceAsWebcam`, or the QTI USB
-gadget HAL. The verifier also checks that the QTI USB gadget HAL handles
-`GadgetFunction::UVC`, links `uvc.0`, and that `hal_usb_gadget_server` can read
-`ro.usb.uvc.enabled`.
-
-The preflight checker is non-destructive: it runs `git apply --check` against
-the synced source tree and validates the existing HAL, SELinux and kernel UVC
-pieces before the CaCam OS patch is applied.
-
-It also detects an already-patched tree and validates the installed CaCam OS
-overlay instead of failing on a patch that is no longer applicable.
-
-The current local source status is recorded in `CURRENT_SOURCE_PREFLIGHT.md`.
-
-## Current Device Audit
-
-The attached Mi 10 Pro running `23.2-20260626-NIGHTLY-cmi` was checked on
-2026-07-01. It already has:
-
-- `CONFIG_MEDIA_USB_SUPPORT=y`
-- `CONFIG_USB_VIDEO_CLASS=y`
-- `CONFIG_USB_CONFIGFS_F_UVC=y`
-- `package:com.android.DeviceAsWebcam`
-- QTI USB gadget services running under `vendor_hal_usb_qti`
-- compiled SELinux policy mapping `vendor_hal_usb_qti` into
-  `hal_usb_gadget_server`
-
-But it does not expose webcam mode yet because:
-
-```text
-ro.usb.uvc.enabled=<unset>
-```
-
-So the ROM addon intentionally enables `ro.usb.uvc.enabled=true` at build time
-in the `cmi` product, while keeping `DeviceAsWebcam` explicitly included and
-verifying the HAL path before build.
+The wrapper performs memory and swap preflight checks, caps CPU affinity and
+build parallelism, lowers scheduler priority and stops the build if available
+memory falls below the configured threshold.
 
 ## Runtime Check
 
-After flashing the build, boot the phone, plug it into a computer and run:
+After installation, connect through authenticated wireless ADB and run:
 
 ```bash
 ./lineageos/cmi/tools/verify-webcam.sh
 ```
 
-Expected Android-side signals:
-
-- `ro.product.device` is `cmi`.
-- `ro.usb.uvc.enabled` is `true`.
-- USB state/functions can include `uvc` when webcam mode is selected.
-
-Expected host-side signals:
-
-- Linux: `v4l2-ctl --list-devices` shows the phone as a video capture device.
-- OBS: a regular Video Capture Device entry appears, no BGOBS plugin required.
-- Windows/macOS: the device appears as a normal USB camera if the USB gadget is
-  accepted by the host.
-
-## Optional Root Runtime Variant
-
-If rebuilding LineageOS is not practical and the phone is rooted with Magisk,
-use the separate module:
-
-```text
-dist/CaCamOS-cmi-webcam-magisk-0.2.3.zip
-```
-
-It sets `ro.usb.uvc.enabled=true` at boot with Magisk `resetprop`. It does not
-force `sys.usb.config=uvc`; Android and `DeviceAsWebcam` still select the actual
-USB webcam function.
-
-On the attached Mi 10 Pro, temporary Magisk boot works with a matching patched
-`20260626` boot image. Root is exposed as `/debug_ramdisk/su` during that
-temporary boot. A runtime `resetprop` test is useful for diagnostics, but the
-clean target remains a LineageOS build where `ro.usb.uvc.enabled=true` exists
-from boot.
-
-## Camera Mapping
-
-The initial overlay keeps the AOSP defaults:
-
-```json
-{}
-```
-
-That means `DeviceAsWebcam` will rely on the logical camera list exposed by the
-Camera HAL. Once a real `cmi` build is flashed, run:
+On Linux, the host should expose the standard devices through `uvcvideo` and
+UAC2:
 
 ```bash
-adb shell dumpsys media.camera > cmi-camera-dump.txt
+v4l2-ctl --list-devices
+v4l2-ctl --device=/dev/video0 --list-formats-ext
+arecord -l
+aplay -l
 ```
 
-Then update `physical_camera_mapping.json` if we want explicit labels such as
-wide, ultra-wide or telephoto in the webcam picker.
+Windows, Teams, OBS and browsers should select CaCamOS through their normal
+camera and audio device menus. The physical MI10 Pro has been reported working
+on Windows with the standard host path.
 
-## References
+## Reproducibility
 
-- Android Device-as-Webcam architecture:
-  https://source.android.com/docs/core/camera/webcam
-- LineageOS DeviceAsWebcam package:
-  https://github.com/LineageOS/android_packages_services_DeviceAsWebcam
-- LineageOS `sm8250` kernel UVC config:
-  https://github.com/LineageOS/android_kernel_xiaomi_sm8250/blob/lineage-23.2/arch/arm64/configs/vendor/kona-perf_defconfig
+The source publication contains changes for:
+
+- `device/xiaomi/cmi`
+- `frameworks/base`
+- `packages/services/DeviceAsWebcam`
+- `kernel/xiaomi/sm8250`
+- `system/sepolicy`
+- `vendor/qcom/opensource/usb`
+- `packages/apps/Settings`
+- `packages/modules/adb`
+- `vendor/lineage`
+- `build/make`, `build/soong` and `build/blueprint`
+- `bootable/recovery`
+- `system/core`
+
+The exact base commits are encoded in `tools/verify-patch-series.sh`.

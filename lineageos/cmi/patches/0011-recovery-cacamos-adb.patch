@@ -1,0 +1,20 @@
+diff --git a/bootable/recovery/recovery_main.cpp b/bootable/recovery/recovery_main.cpp
+index 3fdef4ea..2a880a17 100644
+--- a/bootable/recovery/recovery_main.cpp
++++ b/bootable/recovery/recovery_main.cpp
+@@ -524,6 +524,15 @@ int main(int argc, char** argv) {
+   std::thread listener_thread(ListenRecoverySocket, ui, std::ref(action));
+   listener_thread.detach();
+ 
++  if (IsRoDebuggable() &&
++      android::base::GetBoolProperty("ro.cacamos.appliance", false)) {
++    if (!android::base::SetProperty("ro.adb.secure.recovery", "0")) {
++      LOG(ERROR) << "Failed to enable unattended CaCamOS recovery ADB";
++    } else {
++      LOG(INFO) << "CaCamOS recovery ADB enabled for appliance maintenance";
++    }
++  }
++
+   // Set up adb_keys and enable root before starting ADB.
+   if (get_build_type() != "user" && !fastboot) {
+     copy_userdata_files();

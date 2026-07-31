@@ -1,0 +1,295 @@
+diff --git a/build/make/target/product/base_system.mk b/build/make/target/product/base_system.mk
+index 4bae34dfb4..48064711c0 100644
+--- a/build/make/target/product/base_system.mk
++++ b/build/make/target/product/base_system.mk
+@@ -364,7 +364,8 @@ ifneq ($(PRODUCT_NO_DYNAMIC_SYSTEM_UPDATE),true)
+ 
+ endif
+ 
+-# Check if the build supports NFC apex or not
++# Android 16 packages the NFC framework and service in one APEX. The cmi
++# hardware provides the matching HAL, so retain the platform module.
+ ifeq ($(RELEASE_PACKAGE_NFC_STACK),NfcNci)
+     PRODUCT_PACKAGES += \
+         framework-nfc \
+diff --git a/build/make/target/product/default_art_config.mk b/build/make/target/product/default_art_config.mk
+index 93dff3f833..700121ab5a 100644
+--- a/build/make/target/product/default_art_config.mk
++++ b/build/make/target/product/default_art_config.mk
+@@ -120,7 +120,8 @@ ifeq ($(RELEASE_CONSCRYPT_NSC),true)
+ 
+ endif
+ 
+-# Check if the build supports NFC apex or not
++# Check if the build supports NFC apex or not. Android 16 requires the NFC
++# bootclasspath fragment even for the dedicated CaCamOS product graph.
+ ifeq ($(RELEASE_PACKAGE_NFC_STACK),NfcNci)
+     PRODUCT_BOOT_JARS += \
+         framework-nfc
+diff --git a/build/make/target/product/full_base.mk b/build/make/target/product/full_base.mk
+index 7aa7903dd4..65f8d75649 100644
+--- a/build/make/target/product/full_base.mk
++++ b/build/make/target/product/full_base.mk
+@@ -24,10 +24,14 @@ PRODUCT_PACKAGES := \
+     WAPPushManager
+ 
+ PRODUCT_PACKAGES += \
+-    LiveWallpapersPicker \
+-    PhotoTable \
+     preinstalled-packages-platform-full-base.xml
+ 
++ifneq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
++    LiveWallpapersPicker \
++    PhotoTable
++endif
++
+ # Net:
+ #   Vendors can use the platform-provided network configuration utilities (ip,
+ #   iptable, etc.) to configure the Linux networking stack, but these utilities
+diff --git a/build/make/target/product/generic_system.mk b/build/make/target/product/generic_system.mk
+index 2482afccc6..36588b26c9 100644
+--- a/build/make/target/product/generic_system.mk
++++ b/build/make/target/product/generic_system.mk
+@@ -25,8 +25,11 @@ $(call inherit-product-if-exists, vendor/google/security/adb/vendor_key.mk)
+ $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
+ 
+ # Shared java libs
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     com.android.nfc_extras \
++    Tag
++endif
+ 
+ # Applications
+ PRODUCT_PACKAGES += \
+@@ -34,7 +37,6 @@ PRODUCT_PACKAGES += \
+     PartnerBookmarksProvider \
+     preinstalled-packages-platform-generic-system.xml \
+     Stk \
+-    Tag \
+ 
+ # OTA support
+ PRODUCT_PACKAGES += \
+diff --git a/build/make/target/product/handheld_product.mk b/build/make/target/product/handheld_product.mk
+index ae7cbe0a16..a3334dcccb 100644
+--- a/build/make/target/product/handheld_product.mk
++++ b/build/make/target/product/handheld_product.mk
+@@ -20,7 +20,14 @@
+ # does, use base_product.mk).
+ $(call inherit-product, $(SRC_TARGET_DIR)/product/media_product.mk)
+ 
+-# /product packages
++# /product packages required by the platform.
++PRODUCT_PACKAGES += \
++    preinstalled-packages-platform-handheld-product.xml \
++    SettingsIntelligence \
++    frameworks-base-overlays
++
++# Consumer applications are not part of a dedicated CaCamOS appliance.
++ifneq ($(CACAMOS_APPLIANCE),true)
+ PRODUCT_PACKAGES += \
+     Browser2 \
+     Calendar \
+@@ -29,10 +36,8 @@ PRODUCT_PACKAGES += \
+     DeskClock \
+     Gallery2 \
+     Music \
+-    preinstalled-packages-platform-handheld-product.xml \
+-    QuickSearchBox \
+-    SettingsIntelligence \
+-    frameworks-base-overlays
++    QuickSearchBox
++endif
+ 
+ ifeq ($(LINEAGE_BUILD),)
+ PRODUCT_PACKAGES += \
+diff --git a/build/make/target/product/handheld_system.mk b/build/make/target/product/handheld_system.mk
+index e2fcc8fae3..eefb0b548d 100644
+--- a/build/make/target/product/handheld_system.mk
++++ b/build/make/target/product/handheld_system.mk
+@@ -35,11 +35,8 @@ $(call inherit-product-if-exists, frameworks/webview/chromium/chromium.mk)
+ 
+ PRODUCT_PACKAGES += \
+     android.software.window_magnification.prebuilt.xml \
+-    BasicDreams \
+     BlockedNumberProvider \
+-    BluetoothMidiService \
+     BookmarkProvider \
+-    BuiltInPrintService \
+     CalendarProvider \
+     cameraserver \
+     CameraExtensionsProxy \
+@@ -47,33 +44,42 @@ PRODUCT_PACKAGES += \
+     CertInstaller \
+     CredentialManager \
+     DeviceAsWebcam \
+-    DeviceDiagnostics \
+     DocumentsUI \
+-    DownloadProviderUi \
+-    EasterEgg \
+     ExternalStorageProvider \
+     FusedLocation \
+     InputDevices \
+     KeyChain \
+     librs_jni \
+-    ManagedProvisioning \
+     MmsService \
+-    MtpService \
+-    MusicFX \
+     PacProcessor \
+     preinstalled-packages-platform-handheld-system.xml \
+-    PrintRecommendationService \
+-    PrintSpooler \
+-    PrivateSpace \
+     ProxyHandler \
+     screenrecord \
+     SecureElement \
+     SharedStorageBackup \
+-    SimAppDialog \
+     TeleService \
+     UserDictionaryProvider \
+     VpnDialogs \
+-    vr \
++    vr
++
++# Consumer and general-purpose utility UIs are omitted from CaCamOS.
++ifneq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
++    BasicDreams \
++    BluetoothMidiService \
++    BuiltInPrintService \
++    DeviceDiagnostics \
++    DownloadProviderUi \
++    EasterEgg \
++    ManagedProvisioning \
++    MtpService \
++    MusicFX \
++    PrintRecommendationService \
++    PrintSpooler \
++    PrivateSpace \
++    SimAppDialog \
++    StatementService
++endif
+ 
+ ifeq ($(RELEASE_ACONFIG_INCLUDE_CONTACTS_PICKER_APP),true)
+   PRODUCT_PACKAGES += ContactsPicker
+diff --git a/build/make/target/product/handheld_system_ext.mk b/build/make/target/product/handheld_system_ext.mk
+index cf9b8940b8..6cef659690 100644
+--- a/build/make/target/product/handheld_system_ext.mk
++++ b/build/make/target/product/handheld_system_ext.mk
+@@ -20,16 +20,20 @@
+ # does, use base_system_ext.mk).
+ $(call inherit-product, $(SRC_TARGET_DIR)/product/media_system_ext.mk)
+ 
+-# /system_ext packages
++# /system_ext packages required by the appliance.
+ PRODUCT_PACKAGES += \
+-    AccessibilityMenu \
+-    AvatarPicker \
+-    Launcher3QuickStep \
+-    Provision \
+     Settings \
+     StorageManager \
+     SystemUI \
+-    WallpaperCropper \
++    WallpaperCropper
++
++ifneq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
++    AccessibilityMenu \
++    AvatarPicker \
++    Launcher3QuickStep \
++    Provision
++endif
+ 
+ # Allowlist for system packages included in handheld_system_ext.mk
+ PRODUCT_PACKAGES += preinstalled-packages-handheld-system-ext.xml
+diff --git a/build/make/target/product/media_system.mk b/build/make/target/product/media_system.mk
+index 8c111aed94..af0db706ff 100644
+--- a/build/make/target/product/media_system.mk
++++ b/build/make/target/product/media_system.mk
+@@ -34,12 +34,17 @@ PRODUCT_PACKAGES += \
+     libwebviewchromium_loader \
+     libwebviewchromium_plat_support \
+     make_f2fs \
+-    requestsync \
++    requestsync
+ 
+ ifeq ($(RELEASE_PACKAGE_COMPUTER_CONTROL),true)
+   PRODUCT_PACKAGES += VirtualDeviceManager
+ endif
+ 
++ifneq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
++    StatementService
++endif
++
+ PRODUCT_HOST_PACKAGES += \
+     fsck.f2fs \
+ 
+diff --git a/build/make/target/product/telephony_product.mk b/build/make/target/product/telephony_product.mk
+index aa70f46797..3abfa7e6ef 100644
+--- a/build/make/target/product/telephony_product.mk
++++ b/build/make/target/product/telephony_product.mk
+@@ -17,8 +17,13 @@
+ # This is the list of modules that are specific to products that have telephony
+ # hardware, and install to the product partition.
+ 
+-# /product packages
++# Keep telephony metadata required by the inherited MI8 device configuration,
++# but omit user-facing phone applications from the webcam appliance.
+ PRODUCT_PACKAGES += \
+-    Dialer \
+-    ImsServiceEntitlement \
+     preinstalled-packages-platform-telephony-product.xml
++
++ifneq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
++    Dialer \
++    ImsServiceEntitlement
++endif
+diff --git a/build/make/target/product/telephony_system.mk b/build/make/target/product/telephony_system.mk
+index ef48719052..52832a59b5 100644
+--- a/build/make/target/product/telephony_system.mk
++++ b/build/make/target/product/telephony_system.mk
+@@ -18,10 +18,14 @@
+ # hardware, and install on the system partition.
+ 
+ PRODUCT_PACKAGES := \
+-    ONS \
++    ONS
++
++ifneq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
+     CarrierDefaultApp \
+     CallLogBackup \
+     com.android.cellbroadcast \
+-    CellBroadcastLegacyApp \
++    CellBroadcastLegacyApp
++endif
+ 
+ PRODUCT_COPY_FILES := \
+diff --git a/build/make/target/product/telephony_system_ext.mk b/build/make/target/product/telephony_system_ext.mk
+index f821381076..6c38e6dbe1 100644
+--- a/build/make/target/product/telephony_system_ext.mk
++++ b/build/make/target/product/telephony_system_ext.mk
+@@ -17,10 +17,15 @@
+ # This is the list of modules that are specific to products that have telephony
+ # hardware, and install to the system_ext partition.
+ 
+-# /system_ext packages
++# CarrierConfig remains available to the inherited radio stack. EmergencyInfo
++# is a user-facing phone application and is omitted from CaCamOS.
+ PRODUCT_PACKAGES += \
+-    CarrierConfig \
+-    EmergencyInfo \
++    CarrierConfig
++
++ifneq ($(CACAMOS_APPLIANCE),true)
++PRODUCT_PACKAGES += \
++    EmergencyInfo
++endif
+ 
+ PRODUCT_PACKAGES_SHIPPING_API_LEVEL_34 += \
+     hwservicemanager \

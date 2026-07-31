@@ -1,0 +1,1389 @@
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uac2.c b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uac2.c
+index 39ec732d8e91..12e89ce86a5a 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uac2.c
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uac2.c
+@@ -84,18 +84,18 @@ static char clksrc_in[8];
+ static char clksrc_out[8];
+ 
+ static struct usb_string strings_fn[] = {
+-	[STR_ASSOC].s = "Source/Sink",
+-	[STR_IF_CTRL].s = "Topology Control",
++	[STR_ASSOC].s = "CaCamOS Audio",
++	[STR_IF_CTRL].s = "CaCamOS Audio Control",
+ 	[STR_CLKSRC_IN].s = clksrc_in,
+ 	[STR_CLKSRC_OUT].s = clksrc_out,
+-	[STR_USB_IT].s = "USBH Out",
+-	[STR_IO_IT].s = "USBD Out",
+-	[STR_USB_OT].s = "USBH In",
+-	[STR_IO_OT].s = "USBD In",
+-	[STR_AS_OUT_ALT0].s = "Playback Inactive",
+-	[STR_AS_OUT_ALT1].s = "Playback Active",
+-	[STR_AS_IN_ALT0].s = "Capture Inactive",
+-	[STR_AS_IN_ALT1].s = "Capture Active",
++	[STR_USB_IT].s = "Computer Playback",
++	[STR_IO_IT].s = "CaCamOS Microphone",
++	[STR_USB_OT].s = "Computer Microphone",
++	[STR_IO_OT].s = "CaCamOS Speakers",
++	[STR_AS_OUT_ALT0].s = "CaCamOS Speakers Inactive",
++	[STR_AS_OUT_ALT1].s = "CaCamOS Speakers",
++	[STR_AS_IN_ALT0].s = "CaCamOS Microphone Inactive",
++	[STR_AS_IN_ALT1].s = "CaCamOS Microphone",
+ 	{ },
+ };
+ 
+@@ -277,7 +277,7 @@ static struct usb_endpoint_descriptor fs_epout_desc = {
+ 	.bDescriptorType = USB_DT_ENDPOINT,
+ 
+ 	.bEndpointAddress = USB_DIR_OUT,
+-	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_SYNC,
++	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ADAPTIVE,
+ 	/* .wMaxPacketSize = DYNAMIC */
+ 	.bInterval = 1,
+ };
+@@ -286,7 +286,7 @@ static struct usb_endpoint_descriptor hs_epout_desc = {
+ 	.bLength = USB_DT_ENDPOINT_SIZE,
+ 	.bDescriptorType = USB_DT_ENDPOINT,
+ 
+-	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_SYNC,
++	.bmAttributes = USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ADAPTIVE,
+ 	/* .wMaxPacketSize = DYNAMIC */
+ 	.bInterval = 4,
+ };
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uvc.c b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uvc.c
+index 909623dcd748..22293ec2eda2 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uvc.c
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/f_uvc.c
+@@ -339,6 +339,11 @@ uvc_function_set_alt(struct usb_function *f, unsigned interface, unsigned alt)
+ 		v4l2_event.type = UVC_EVENT_STREAMOFF;
+ 		v4l2_event_queue(&uvc->vdev, &v4l2_event);
+ 
++		/*
++		 * Do not delay alt 0. Some hosts close and reopen the device
++		 * without waiting for userspace camera teardown. Keeping ep0
++		 * delayed here prevents the next probe/commit sequence.
++		 */
+ 		uvc->state = UVC_STATE_CONNECTED;
+ 		return 0;
+ 
+@@ -357,9 +362,15 @@ uvc_function_set_alt(struct usb_function *f, unsigned interface, unsigned alt)
+ 		if (ret)
+ 			return ret;
+ 		usb_ep_enable(uvc->video.ep);
++		uvc->video.max_req_size = uvc->video.ep->maxpacket
++			* max_t(unsigned int, uvc->video.ep->maxburst, 1)
++			* max_t(unsigned int, uvc->video.ep->mult, 1);
++		uvcg_video_prep_requests(&uvc->video);
+ 
+ 		memset(&v4l2_event, 0, sizeof(v4l2_event));
+ 		v4l2_event.type = UVC_EVENT_STREAMON;
++		atomic_set(&uvc->delayed_status,
++			   UVC_DELAYED_STATUS_STREAM_ON);
+ 		v4l2_event_queue(&uvc->vdev, &v4l2_event);
+ 		return USB_GADGET_DELAYED_STATUS;
+ 
+@@ -381,6 +392,7 @@ uvc_function_disable(struct usb_function *f)
+ 	v4l2_event_queue(&uvc->vdev, &v4l2_event);
+ 
+ 	uvc->state = UVC_STATE_DISCONNECTED;
++	atomic_set(&uvc->delayed_status, UVC_DELAYED_STATUS_NONE);
+ 
+ 	usb_ep_disable(uvc->video.ep);
+ 	usb_ep_disable(uvc->control_ep);
+@@ -789,6 +801,7 @@ uvc_function_bind(struct usb_configuration *c, struct usb_function *f)
+ 
+ error:
+ 	v4l2_device_unregister(&uvc->v4l2_dev);
++	uvcg_video_cleanup(&uvc->video);
+ 
+ 	if (uvc->control_req)
+ 		usb_ep_free_request(cdev->gadget->ep0, uvc->control_req);
+@@ -905,6 +918,7 @@ static void uvc_free(struct usb_function *f)
+ 	struct uvc_device *uvc = to_uvc(f);
+ 	struct f_uvc_opts *opts = container_of(f->fi, struct f_uvc_opts,
+ 					       func_inst);
++	uvcg_video_cleanup(&uvc->video);
+ 	--opts->refcnt;
+ 	kfree(uvc);
+ }
+@@ -924,6 +938,7 @@ static void uvc_unbind(struct usb_configuration *c, struct usb_function *f)
+ 	device_remove_file(&uvc->vdev.dev, &dev_attr_function_name);
+ 	video_unregister_device(&uvc->vdev);
+ 	v4l2_device_unregister(&uvc->v4l2_dev);
++	uvcg_video_cleanup(&uvc->video);
+ 
+ 	if (uvc->wait_for_close)
+ 		wait_for_completion(&uvc->unbind_ok);
+@@ -947,6 +962,7 @@ static struct usb_function *uvc_alloc(struct usb_function_instance *fi)
+ 	init_completion(&uvc->unbind_ok);
+ 	mutex_init(&uvc->video.mutex);
+ 	uvc->state = UVC_STATE_DISCONNECTED;
++	atomic_set(&uvc->delayed_status, UVC_DELAYED_STATUS_NONE);
+ 	opts = fi_to_f_uvc_opts(fi);
+ 
+ 	mutex_lock(&opts->lock);
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_uac2.h b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_uac2.h
+index 6a561cf39d98..cb663b18fb0a 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_uac2.h
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_uac2.h
+@@ -19,7 +19,7 @@
+ #define UAC2_DEF_PSRATE 48000
+ #define UAC2_DEF_PSSIZE 2
+ #define UAC2_DEF_CCHMASK 0x3
+-#define UAC2_DEF_CSRATE 44100
++#define UAC2_DEF_CSRATE 48000
+ #define UAC2_DEF_CSSIZE 2
+ #define UAC2_DEF_REQ_NUM 32
+ 
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc.h b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc.h
+index 516557d2c38a..daa179c14d86 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc.h
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc.h
+@@ -9,11 +9,14 @@
+ #ifndef _UVC_GADGET_H_
+ #define _UVC_GADGET_H_
+ 
++#include <linux/atomic.h>
++#include <linux/kthread.h>
+ #include <linux/list.h>
+ #include <linux/mutex.h>
+ #include <linux/spinlock.h>
+ #include <linux/usb/composite.h>
+ #include <linux/videodev2.h>
++#include <linux/workqueue.h>
+ 
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-dev.h>
+@@ -64,14 +67,27 @@ extern unsigned int uvc_gadget_trace_param;
+  * Driver specific constants
+  */
+ 
+-#define UVC_NUM_REQUESTS			64
++#define UVC_NUM_REQUESTS			640
+ #define UVC_MAX_REQUEST_SIZE			64
+ #define UVC_MAX_EVENTS				4
++#define UVCG_REQUEST_HEADER_LEN			2
++#define UVCG_REQ_MAX_INFLIGHT			64
++#define UVCG_REQ_MAX_ZERO_COUNT			32
+ 
+ /* ------------------------------------------------------------------------
+  * Structures
+  */
+ 
++struct uvc_video;
++
++struct uvc_request {
++	struct usb_request *req;
++	__u8 *req_buffer;
++	struct uvc_video *video;
++	struct uvc_buffer *last_buf;
++	bool queued;
++};
++
+ struct uvc_video {
+ 	struct usb_ep *ep;
+ 
+@@ -81,14 +97,28 @@ struct uvc_video {
+ 	unsigned int width;
+ 	unsigned int height;
+ 	unsigned int imagesize;
++	unsigned int interval;	/* in 100ns units */
+ 	struct mutex mutex;	/* protects frame parameters */
+ 
+ 	/* Requests */
++	bool is_enabled;
+ 	unsigned int req_size;
+-	struct usb_request *req[UVC_NUM_REQUESTS];
+-	__u8 *req_buffer[UVC_NUM_REQUESTS];
++	unsigned int max_req_size;
++	unsigned int uvc_num_requests;
++	unsigned int reqs_per_frame;
++	unsigned int frame_req_count;
++	unsigned int frame_padding;
++	struct uvc_request *ureq[UVC_NUM_REQUESTS];
+ 	struct list_head req_free;
++	struct list_head req_ready;
+ 	spinlock_t req_lock;
++	wait_queue_head_t req_wait;
++	struct work_struct pump;
++	struct workqueue_struct *async_wq;
++	struct kthread_worker *kworker;
++	struct kthread_work hw_submit;
++	atomic_t queued;
++	u32 missed_xfer_count;
+ 
+ 	void (*encode) (struct usb_request *req, struct uvc_video *video,
+ 			struct uvc_buffer *buf);
+@@ -107,10 +137,17 @@ enum uvc_state {
+ 	UVC_STATE_STREAMING,
+ };
+ 
++enum uvc_delayed_status {
++	UVC_DELAYED_STATUS_NONE,
++	UVC_DELAYED_STATUS_STREAM_ON,
++	UVC_DELAYED_STATUS_STREAM_OFF,
++};
++
+ struct uvc_device {
+ 	struct video_device vdev;
+ 	struct v4l2_device v4l2_dev;
+ 	enum uvc_state state;
++	atomic_t delayed_status;
+ 	struct usb_function func;
+ 	struct uvc_video video;
+ 
+@@ -160,5 +197,4 @@ extern void uvc_endpoint_stream(struct uvc_device *dev);
+ 
+ extern void uvc_function_connect(struct uvc_device *uvc);
+ extern void uvc_function_disconnect(struct uvc_device *uvc);
+-
+ #endif /* _UVC_GADGET_H_ */
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.c b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.c
+index 956341528eca..2e5038424ce8 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.c
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.c
+@@ -57,6 +57,7 @@ static int uvc_queue_setup(struct vb2_queue *vq,
+ static int uvc_buffer_prepare(struct vb2_buffer *vb)
+ {
+ 	struct uvc_video_queue *queue = vb2_get_drv_priv(vb->vb2_queue);
++	struct uvc_video *video = container_of(queue, struct uvc_video, queue);
+ 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+ 	struct uvc_buffer *buf = container_of(vbuf, struct uvc_buffer, buf);
+ 
+@@ -72,10 +73,24 @@ static int uvc_buffer_prepare(struct vb2_buffer *vb)
+ 	buf->state = UVC_BUF_STATE_QUEUED;
+ 	buf->mem = vb2_plane_vaddr(vb, 0);
+ 	buf->length = vb2_plane_size(vb, 0);
+-	if (vb->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
++	if (vb->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+ 		buf->bytesused = 0;
+-	else
++	} else {
+ 		buf->bytesused = vb2_get_plane_payload(vb, 0);
++		if (!video->max_payload_size && video->reqs_per_frame) {
++			/*
++			 * Send encoded data first, then reserve the rest of
++			 * the frame period with empty requests.
++			 */
++			buf->req_payload_size = video->req_size;
++		} else {
++			buf->req_payload_size = video->max_req_size ?
++				video->max_req_size : video->req_size;
++		}
++		buf->req_payload_size =
++			max_t(unsigned int, buf->req_payload_size,
++			      UVCG_REQUEST_HEADER_LEN);
++	}
+ 
+ 	return 0;
+ }
+@@ -284,6 +299,7 @@ int uvcg_queue_enable(struct uvc_video_queue *queue, int enable)
+ 
+ 		queue->sequence = 0;
+ 		queue->buf_used = 0;
++		queue->flags &= ~UVC_QUEUE_DROP_INCOMPLETE;
+ 	} else {
+ 		ret = vb2_streamoff(&queue->queue, queue->queue.type);
+ 		if (ret < 0)
+@@ -305,34 +321,24 @@ int uvcg_queue_enable(struct uvc_video_queue *queue, int enable)
+ 	return ret;
+ }
+ 
+-/* called with &queue_irqlock held.. */
+-struct uvc_buffer *uvcg_queue_next_buffer(struct uvc_video_queue *queue,
+-					  struct uvc_buffer *buf)
++/* Called with queue->irqlock held. */
++void uvcg_complete_buffer(struct uvc_video_queue *queue,
++			  struct uvc_buffer *buf)
+ {
+-	struct uvc_buffer *nextbuf;
+-
+-	if ((queue->flags & UVC_QUEUE_DROP_INCOMPLETE) &&
+-	     buf->length != buf->bytesused) {
+-		buf->state = UVC_BUF_STATE_QUEUED;
++	if (queue->flags & UVC_QUEUE_DROP_INCOMPLETE) {
++		queue->flags &= ~UVC_QUEUE_DROP_INCOMPLETE;
++		buf->state = UVC_BUF_STATE_ERROR;
+ 		vb2_set_plane_payload(&buf->buf.vb2_buf, 0, 0);
+-		return buf;
++		vb2_buffer_done(&buf->buf.vb2_buf, VB2_BUF_STATE_ERROR);
++		return;
+ 	}
+ 
+-	list_del(&buf->queue);
+-	if (!list_empty(&queue->irqqueue))
+-		nextbuf = list_first_entry(&queue->irqqueue, struct uvc_buffer,
+-					   queue);
+-	else
+-		nextbuf = NULL;
+-
+ 	buf->buf.field = V4L2_FIELD_NONE;
+ 	buf->buf.sequence = queue->sequence++;
+ 	buf->buf.vb2_buf.timestamp = ktime_get_ns();
+ 
+ 	vb2_set_plane_payload(&buf->buf.vb2_buf, 0, buf->bytesused);
+ 	vb2_buffer_done(&buf->buf.vb2_buf, VB2_BUF_STATE_DONE);
+-
+-	return nextbuf;
+ }
+ 
+ struct uvc_buffer *uvcg_queue_head(struct uvc_video_queue *queue)
+@@ -347,4 +353,3 @@ struct uvc_buffer *uvcg_queue_head(struct uvc_video_queue *queue)
+ 
+ 	return buf;
+ }
+-
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.h b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.h
+index 2f0fff769843..6298ce73b4de 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.h
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_queue.h
+@@ -36,6 +36,8 @@ struct uvc_buffer {
+ 	void *mem;
+ 	unsigned int length;
+ 	unsigned int bytesused;
++	/* Payload sent per isochronous request for this frame. */
++	unsigned int req_payload_size;
+ };
+ 
+ #define UVC_QUEUE_DISCONNECTED		(1 << 0)
+@@ -88,10 +90,9 @@ void uvcg_queue_cancel(struct uvc_video_queue *queue, int disconnect);
+ 
+ int uvcg_queue_enable(struct uvc_video_queue *queue, int enable);
+ 
+-struct uvc_buffer *uvcg_queue_next_buffer(struct uvc_video_queue *queue,
+-					  struct uvc_buffer *buf);
++void uvcg_complete_buffer(struct uvc_video_queue *queue,
++			  struct uvc_buffer *buf);
+ 
+ struct uvc_buffer *uvcg_queue_head(struct uvc_video_queue *queue);
+ 
+ #endif /* _UVC_QUEUE_H_ */
+-
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_v4l2.c b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_v4l2.c
+index 79207ced3e2f..d8bef71178ad 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_v4l2.c
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_v4l2.c
+@@ -14,6 +14,7 @@
+ #include <linux/videodev2.h>
+ #include <linux/vmalloc.h>
+ #include <linux/wait.h>
++#include <linux/math64.h>
+ 
+ #include <media/v4l2-dev.h>
+ #include <media/v4l2-event.h>
+@@ -138,6 +139,51 @@ uvc_v4l2_set_format(struct file *file, void *fh, struct v4l2_format *fmt)
+ 	return 0;
+ }
+ 
++static int
++uvc_v4l2_get_streamparm(struct file *file, void *fh,
++			struct v4l2_streamparm *parm)
++{
++	struct video_device *vdev = video_devdata(file);
++	struct uvc_device *uvc = video_get_drvdata(vdev);
++	struct uvc_video *video = &uvc->video;
++
++	if (!V4L2_TYPE_IS_OUTPUT(parm->type))
++		return -EINVAL;
++
++	parm->parm.output.capability = V4L2_CAP_TIMEPERFRAME;
++	parm->parm.output.timeperframe.numerator = video->interval;
++	parm->parm.output.timeperframe.denominator = 10000000;
++	return 0;
++}
++
++static int
++uvc_v4l2_set_streamparm(struct file *file, void *fh,
++			struct v4l2_streamparm *parm)
++{
++	struct video_device *vdev = video_devdata(file);
++	struct uvc_device *uvc = video_get_drvdata(vdev);
++	struct uvc_video *video = &uvc->video;
++	struct v4l2_fract *timeperframe;
++	u64 interval;
++
++	if (!V4L2_TYPE_IS_OUTPUT(parm->type))
++		return -EINVAL;
++
++	timeperframe = &parm->parm.output.timeperframe;
++	if (!timeperframe->numerator || !timeperframe->denominator)
++		return -EINVAL;
++
++	interval = div_u64((u64)timeperframe->numerator * 10000000ULL,
++			   timeperframe->denominator);
++	if (!interval || interval > U32_MAX)
++		return -ERANGE;
++
++	video->interval = interval;
++	uvcg_video_prep_requests(video);
++	parm->parm.output.capability = V4L2_CAP_TIMEPERFRAME;
++	return 0;
++}
++
+ static int
+ uvc_v4l2_reqbufs(struct file *file, void *fh, struct v4l2_requestbuffers *b)
+ {
+@@ -173,7 +219,10 @@ uvc_v4l2_qbuf(struct file *file, void *fh, struct v4l2_buffer *b)
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	return uvcg_video_pump(video);
++	if (uvc->state == UVC_STATE_STREAMING)
++		queue_work(video->async_wq, &video->pump);
++
++	return 0;
+ }
+ 
+ static int
+@@ -192,6 +241,7 @@ uvc_v4l2_streamon(struct file *file, void *fh, enum v4l2_buf_type type)
+ 	struct video_device *vdev = video_devdata(file);
+ 	struct uvc_device *uvc = video_get_drvdata(vdev);
+ 	struct uvc_video *video = &uvc->video;
++	enum uvc_delayed_status delayed_status;
+ 	int ret;
+ 
+ 	if (type != video->queue.queue.type)
+@@ -199,15 +249,23 @@ uvc_v4l2_streamon(struct file *file, void *fh, enum v4l2_buf_type type)
+ 
+ 	/* Enable UVC video. */
+ 	ret = uvcg_video_enable(video, 1);
+-	if (ret < 0)
++	if (ret < 0) {
++		delayed_status = atomic_xchg(&uvc->delayed_status,
++					     UVC_DELAYED_STATUS_NONE);
++		if (delayed_status != UVC_DELAYED_STATUS_NONE)
++			uvc_function_setup_continue(uvc);
+ 		return ret;
++	}
+ 
+ 	/*
+ 	 * Complete the alternate setting selection setup phase now that
+ 	 * userspace is ready to provide video frames.
+ 	 */
+-	uvc_function_setup_continue(uvc);
+ 	uvc->state = UVC_STATE_STREAMING;
++	delayed_status = atomic_xchg(&uvc->delayed_status,
++				     UVC_DELAYED_STATUS_NONE);
++	if (delayed_status == UVC_DELAYED_STATUS_STREAM_ON)
++		uvc_function_setup_continue(uvc);
+ 
+ 	return 0;
+ }
+@@ -218,11 +276,31 @@ uvc_v4l2_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
+ 	struct video_device *vdev = video_devdata(file);
+ 	struct uvc_device *uvc = video_get_drvdata(vdev);
+ 	struct uvc_video *video = &uvc->video;
++	enum uvc_delayed_status delayed_status;
++	bool was_streaming;
++	int ret;
+ 
+ 	if (type != video->queue.queue.type)
+ 		return -EINVAL;
+ 
+-	return uvcg_video_enable(video, 0);
++	was_streaming = uvc->state == UVC_STATE_STREAMING;
++
++	ret = uvcg_video_enable(video, 0);
++
++	/*
++	 * A rapid reopen can queue a new STREAM_ON while userspace is still
++	 * tearing down the previous stream. Never acknowledge that newer
++	 * delayed request from the old STREAMOFF path.
++	 */
++	delayed_status = atomic_cmpxchg(&uvc->delayed_status,
++					UVC_DELAYED_STATUS_STREAM_OFF,
++					UVC_DELAYED_STATUS_NONE);
++	if (was_streaming || delayed_status != UVC_DELAYED_STATUS_NONE)
++		uvc->state = UVC_STATE_CONNECTED;
++	if (delayed_status == UVC_DELAYED_STATUS_STREAM_OFF)
++		uvc_function_setup_continue(uvc);
++
++	return ret;
+ }
+ 
+ static int
+@@ -275,6 +353,8 @@ const struct v4l2_ioctl_ops uvc_v4l2_ioctl_ops = {
+ 	.vidioc_dqbuf = uvc_v4l2_dqbuf,
+ 	.vidioc_streamon = uvc_v4l2_streamon,
+ 	.vidioc_streamoff = uvc_v4l2_streamoff,
++	.vidioc_g_parm = uvc_v4l2_get_streamparm,
++	.vidioc_s_parm = uvc_v4l2_set_streamparm,
+ 	.vidioc_subscribe_event = uvc_v4l2_subscribe_event,
+ 	.vidioc_unsubscribe_event = uvc_v4l2_unsubscribe_event,
+ 	.vidioc_default = uvc_v4l2_ioctl_default,
+@@ -369,4 +449,3 @@ const struct v4l2_file_operations uvc_v4l2_fops = {
+ 	.get_unmapped_area = uvcg_v4l2_get_unmapped_area,
+ #endif
+ };
+-
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.c b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.c
+index 616365f6264a..57254ea2b97f 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.c
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.c
+@@ -9,6 +9,7 @@
+ #include <linux/kernel.h>
+ #include <linux/device.h>
+ #include <linux/errno.h>
++#include <linux/sched.h>
+ #include <linux/usb/ch9.h>
+ #include <linux/usb/gadget.h>
+ #include <linux/usb/video.h>
+@@ -30,6 +31,9 @@ uvc_video_encode_header(struct uvc_video *video, struct uvc_buffer *buf,
+ 	data[0] = 2;
+ 	data[1] = UVC_STREAM_EOH | video->fid;
+ 
++	if (video->queue.flags & UVC_QUEUE_DROP_INCOMPLETE)
++		data[1] |= UVC_STREAM_ERR;
++
+ 	if (buf->bytesused - video->queue.buf_used <= len - 2)
+ 		data[1] |= UVC_STREAM_EOF;
+ 
+@@ -59,7 +63,9 @@ uvc_video_encode_bulk(struct usb_request *req, struct uvc_video *video,
+ 		struct uvc_buffer *buf)
+ {
+ 	void *mem = req->buf;
+-	int len = video->req_size;
++	struct uvc_request *ureq = req->context;
++	const int payload_len = buf->req_payload_size;
++	int len = payload_len;
+ 	int ret;
+ 
+ 	/* Add a header at the beginning of the payload. */
+@@ -77,14 +83,15 @@ uvc_video_encode_bulk(struct usb_request *req, struct uvc_video *video,
+ 	video->payload_size += ret;
+ 	len -= ret;
+ 
+-	req->length = video->req_size - len;
++	req->length = payload_len - len;
+ 	req->zero = video->payload_size == video->max_payload_size;
+ 
+ 	if (buf->bytesused == video->queue.buf_used) {
+ 		video->queue.buf_used = 0;
+ 		buf->state = UVC_BUF_STATE_DONE;
+-		uvcg_queue_next_buffer(&video->queue, buf);
++		list_del(&buf->queue);
+ 		video->fid ^= UVC_STREAM_FID;
++		ureq->last_buf = buf;
+ 
+ 		video->payload_size = 0;
+ 	}
+@@ -99,7 +106,8 @@ uvc_video_encode_isoc(struct usb_request *req, struct uvc_video *video,
+ 		struct uvc_buffer *buf)
+ {
+ 	void *mem = req->buf;
+-	int len = video->req_size;
++	struct uvc_request *ureq = req->context;
++	int len = buf->req_payload_size;
+ 	int ret;
+ 
+ 	/* Add the header. */
+@@ -111,13 +119,16 @@ uvc_video_encode_isoc(struct usb_request *req, struct uvc_video *video,
+ 	ret = uvc_video_encode_data(video, buf, mem, len);
+ 	len -= ret;
+ 
+-	req->length = video->req_size - len;
++	req->length = buf->req_payload_size - len;
++	req->zero = 0;
+ 
+-	if (buf->bytesused == video->queue.buf_used) {
++	if (buf->bytesused == video->queue.buf_used ||
++	    video->queue.flags & UVC_QUEUE_DROP_INCOMPLETE) {
+ 		video->queue.buf_used = 0;
+ 		buf->state = UVC_BUF_STATE_DONE;
+-		uvcg_queue_next_buffer(&video->queue, buf);
++		list_del(&buf->queue);
+ 		video->fid ^= UVC_STREAM_FID;
++		ureq->last_buf = buf;
+ 	}
+ }
+ 
+@@ -127,157 +138,321 @@ uvc_video_encode_isoc(struct usb_request *req, struct uvc_video *video,
+ 
+ static int uvcg_video_ep_queue(struct uvc_video *video, struct usb_request *req)
+ {
++	struct uvc_request *ureq = req->context;
+ 	int ret;
+ 
++	ureq->queued = true;
++	atomic_inc(&video->queued);
+ 	ret = usb_ep_queue(video->ep, req, GFP_ATOMIC);
+ 	if (ret < 0) {
++		ureq->queued = false;
++		atomic_dec(&video->queued);
+ 		printk(KERN_INFO "Failed to queue request (%d).\n", ret);
+ 		/* Isochronous endpoints can't be halted. */
+-		if ((ret != -ESHUTDOWN) &&
+-				usb_endpoint_xfer_bulk(video->ep->desc))
++		if (video->ep->desc &&
++		    usb_endpoint_xfer_bulk(video->ep->desc))
+ 			usb_ep_set_halt(video->ep);
+ 	}
+ 
+ 	return ret;
+ }
+ 
+-/*
+- * I somehow feel that synchronisation won't be easy to achieve here. We have
+- * three events that control USB requests submission:
+- *
+- * - USB request completion: the completion handler will resubmit the request
+- *   if a video buffer is available.
+- *
+- * - USB interface setting selection: in response to a SET_INTERFACE request,
+- *   the handler will start streaming if a video buffer is available and if
+- *   video is not currently streaming.
+- *
+- * - V4L2 buffer queueing: the driver will start streaming if video is not
+- *   currently streaming.
+- *
+- * Race conditions between those 3 events might lead to deadlocks or other
+- * nasty side effects.
+- *
+- * The "video currently streaming" condition can't be detected by the irqqueue
+- * being empty, as a request can still be in flight. A separate "queue paused"
+- * flag is thus needed.
+- *
+- * The paused flag will be set when we try to retrieve the irqqueue head if the
+- * queue is empty, and cleared when we queue a buffer.
+- *
+- * The USB request completion handler will get the buffer at the irqqueue head
+- * under protection of the queue spinlock. If the queue is empty, the streaming
+- * paused flag will be set. Right after releasing the spinlock a userspace
+- * application can queue a buffer. The flag will then cleared, and the ioctl
+- * handler will restart the video stream.
+- */
++/* This function must be called with video->req_lock held. */
++static int uvcg_video_usb_req_queue(struct uvc_video *video,
++				    struct usb_request *req, bool queue_to_ep)
++{
++	struct list_head *list;
++
++	if (!video->is_enabled)
++		return -ENODEV;
++
++	if (queue_to_ep) {
++		/* Always request completions so the DWC3 pipeline cannot stall. */
++		req->no_interrupt = 0;
++		return uvcg_video_ep_queue(video, req);
++	}
++
++	list = video->max_payload_size ?
++		&video->req_free : &video->req_ready;
++	list_add_tail(&req->list, list);
++	return 0;
++}
+ static void
+ uvc_video_complete(struct usb_ep *ep, struct usb_request *req)
+ {
+-	struct uvc_video *video = req->context;
++	struct uvc_request *ureq = req->context;
++	struct uvc_video *video = ureq->video;
+ 	struct uvc_video_queue *queue = &video->queue;
+-	struct uvc_buffer *buf;
++	struct uvc_buffer *last_buf;
+ 	unsigned long flags;
+-	int ret;
++	u32 missed_xfer_count = 0;
++	bool missed_xfer = false;
++	bool schedule_pump = false;
++	bool disconnect_queue = false;
++	bool stop_stream = false;
+ 
+ 	switch (req->status) {
+ 	case 0:
+ 		break;
+ 
++	case -EXDEV:
++		/* Recover at the next UVC frame boundary after a missed packet. */
++		missed_xfer = true;
++		break;
++
+ 	case -ESHUTDOWN:	/* disconnect from host. */
+ 		printk(KERN_DEBUG "VS request cancelled.\n");
+-		uvcg_queue_cancel(queue, 1);
+-		goto requeue;
++		disconnect_queue = true;
++		stop_stream = true;
++		break;
+ 
+ 	default:
+ 		printk(KERN_INFO "VS request completed with status %d.\n",
+ 			req->status);
+-		uvcg_queue_cancel(queue, 0);
+-		goto requeue;
++		stop_stream = true;
++		break;
+ 	}
+ 
+-	spin_lock_irqsave(&video->queue.irqlock, flags);
+-	buf = uvcg_queue_head(&video->queue);
+-	if (buf == NULL) {
+-		spin_unlock_irqrestore(&video->queue.irqlock, flags);
+-		goto requeue;
++	spin_lock_irqsave(&video->req_lock, flags);
++	if (ureq->queued) {
++		ureq->queued = false;
++		atomic_dec(&video->queued);
+ 	}
++	last_buf = ureq->last_buf;
++	ureq->last_buf = NULL;
++	spin_unlock_irqrestore(&video->req_lock, flags);
+ 
+-	video->encode(req, video, buf);
++	if (missed_xfer && req->length) {
++		spin_lock_irqsave(&queue->irqlock, flags);
++		queue->flags |= UVC_QUEUE_DROP_INCOMPLETE;
++		spin_unlock_irqrestore(&queue->irqlock, flags);
++	}
++
++	if (last_buf) {
++		spin_lock_irqsave(&queue->irqlock, flags);
++		uvcg_complete_buffer(queue, last_buf);
++		spin_unlock_irqrestore(&queue->irqlock, flags);
++	}
+ 
+-	ret = uvcg_video_ep_queue(video, req);
+-	spin_unlock_irqrestore(&video->queue.irqlock, flags);
++	spin_lock_irqsave(&video->req_lock, flags);
++	if (stop_stream) {
++		video->is_enabled = false;
++		list_add_tail(&req->list, &video->req_free);
++		spin_unlock_irqrestore(&video->req_lock, flags);
++		wake_up_all(&video->req_wait);
++		uvcg_queue_cancel(queue, disconnect_queue);
++		return;
++	}
+ 
+-	if (ret < 0) {
+-		uvcg_queue_cancel(queue, 0);
+-		goto requeue;
++	if (!video->is_enabled || !video->ep->enabled) {
++		list_add_tail(&req->list, &video->req_free);
++		spin_unlock_irqrestore(&video->req_lock, flags);
++		wake_up_all(&video->req_wait);
++		return;
+ 	}
+ 
+-	return;
++	if (missed_xfer && req->length)
++		missed_xfer_count = ++video->missed_xfer_count;
+ 
+-requeue:
+-	spin_lock_irqsave(&video->req_lock, flags);
+ 	list_add_tail(&req->list, &video->req_free);
++	if (video->is_enabled && video->ep->enabled)
++		schedule_pump = true;
+ 	spin_unlock_irqrestore(&video->req_lock, flags);
++	wake_up_all(&video->req_wait);
++
++	if (missed_xfer_count)
++		printk_ratelimited(KERN_DEBUG
++			"uvcvideo: missed isochronous transfer (%u).\n",
++			missed_xfer_count);
++	if (schedule_pump) {
++		queue_work(video->async_wq, &video->pump);
++		kthread_queue_work(video->kworker, &video->hw_submit);
++	}
++}
++
++static void uvcg_video_hw_submit(struct kthread_work *work)
++{
++	struct uvc_video *video =
++		container_of(work, struct uvc_video, hw_submit);
++	struct uvc_video_queue *queue = &video->queue;
++	struct usb_request *req;
++	unsigned long flags;
++	bool cancel_queue;
++	int ret;
++
++	if (video->max_payload_size)
++		return;
++
++	while (1) {
++		cancel_queue = false;
++		if (!video->ep->enabled)
++			return;
++
++		spin_lock_irqsave(&video->req_lock, flags);
++		if (!video->is_enabled || !video->ep->enabled) {
++			spin_unlock_irqrestore(&video->req_lock, flags);
++			return;
++		}
++		if (atomic_read(&video->queued) >= UVCG_REQ_MAX_INFLIGHT) {
++			spin_unlock_irqrestore(&video->req_lock, flags);
++			return;
++		}
++
++		if (!list_empty(&video->req_ready)) {
++			req = list_first_entry(&video->req_ready,
++					       struct usb_request, list);
++		} else {
++			if (list_empty(&video->req_free) ||
++			    atomic_read(&video->queued) >=
++			    UVCG_REQ_MAX_ZERO_COUNT) {
++				spin_unlock_irqrestore(&video->req_lock, flags);
++				return;
++			}
++			req = list_first_entry(&video->req_free,
++					       struct usb_request, list);
++			req->length = 0;
++			req->zero = 0;
++		}
++		list_del(&req->list);
++
++		ret = uvcg_video_usb_req_queue(video, req, true);
++		if (ret < 0) {
++			list_add_tail(&req->list, &video->req_free);
++			cancel_queue = true;
++		}
++		spin_unlock_irqrestore(&video->req_lock, flags);
++
++		if (cancel_queue) {
++			uvcg_queue_cancel(queue, 0);
++			return;
++		}
++	}
+ }
+ 
+ static int
+ uvc_video_free_requests(struct uvc_video *video)
+ {
++	struct uvc_request *ureq;
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < UVC_NUM_REQUESTS; ++i) {
+-		if (video->req[i]) {
+-			usb_ep_free_request(video->ep, video->req[i]);
+-			video->req[i] = NULL;
+-		}
+-
+-		if (video->req_buffer[i]) {
+-			kfree(video->req_buffer[i]);
+-			video->req_buffer[i] = NULL;
+-		}
++		ureq = video->ureq[i];
++		if (!ureq)
++			continue;
++
++		if (ureq->req)
++			usb_ep_free_request(video->ep, ureq->req);
++		kfree(ureq->req_buffer);
++		kfree(ureq);
++		video->ureq[i] = NULL;
+ 	}
+ 
+ 	INIT_LIST_HEAD(&video->req_free);
++	INIT_LIST_HEAD(&video->req_ready);
+ 	video->req_size = 0;
++	video->uvc_num_requests = 0;
++	video->reqs_per_frame = 0;
++	video->frame_req_count = 0;
++	video->frame_padding = 0;
++	atomic_set(&video->queued, 0);
+ 	return 0;
+ }
+ 
++void uvcg_video_prep_requests(struct uvc_video *video)
++{
++	struct uvc_device *uvc = container_of(video, struct uvc_device, video);
++	struct usb_composite_dev *cdev = uvc->func.config->cdev;
++	unsigned int interval_duration;
++	unsigned int max_req_size;
++	unsigned int interval;
++	unsigned int binterval;
++	unsigned int nreq;
++
++	max_req_size = video->max_req_size;
++	if (!max_req_size && video->ep) {
++		max_req_size = video->ep->maxpacket
++			* max_t(unsigned int, video->ep->maxburst, 1)
++			* max_t(unsigned int, video->ep->mult, 1);
++		video->max_req_size = max_req_size;
++	}
++
++	if (!video->ep || !video->ep->desc || !max_req_size) {
++		video->req_size = 0;
++		video->uvc_num_requests = 0;
++		video->reqs_per_frame = 0;
++		return;
++	}
++
++	if (video->max_payload_size) {
++		video->req_size = max_req_size;
++		video->reqs_per_frame = DIV_ROUND_UP(video->imagesize,
++						     max_req_size);
++		video->uvc_num_requests = min_t(unsigned int,
++			max_t(unsigned int, video->reqs_per_frame, 1),
++			UVC_NUM_REQUESTS);
++		return;
++	}
++
++	binterval = clamp_t(unsigned int, video->ep->desc->bInterval, 1, 16);
++	interval_duration = 1U << (binterval - 1);
++	if (cdev->gadget->speed < USB_SPEED_HIGH)
++		interval_duration *= 10000;
++	else
++		interval_duration *= 1250;
++
++	interval = video->interval ? video->interval : 333333;
++	nreq = DIV_ROUND_UP(interval, interval_duration);
++	nreq = min_t(unsigned int, nreq,
++		     UVC_NUM_REQUESTS - UVCG_REQ_MAX_ZERO_COUNT);
++	nreq = max_t(unsigned int, nreq, 1);
++
++	video->req_size = max_req_size;
++	video->reqs_per_frame = nreq;
++	video->uvc_num_requests = nreq + UVCG_REQ_MAX_ZERO_COUNT;
++}
++
+ static int
+ uvc_video_alloc_requests(struct uvc_video *video)
+ {
+-	unsigned int req_size;
++	struct uvc_request *ureq;
+ 	unsigned int i;
+ 	int ret = -ENOMEM;
+ 
+-	if (video->req_size) {
++	if (video->ureq[0]) {
+ 		pr_err("%s: close the video node and reopen it\n",
+-				__func__);
++					__func__);
+ 		return -EBUSY;
+ 	}
+ 
+-	req_size = video->ep->maxpacket
+-		 * max_t(unsigned int, video->ep->maxburst, 1)
+-		 * (video->ep->mult);
++	uvcg_video_prep_requests(video);
++	if (!video->req_size || !video->uvc_num_requests)
++		return -EINVAL;
+ 
+-	for (i = 0; i < UVC_NUM_REQUESTS; ++i) {
+-		video->req_buffer[i] = kmalloc(req_size, GFP_KERNEL);
+-		if (video->req_buffer[i] == NULL)
++	for (i = 0; i < video->uvc_num_requests; ++i) {
++		ureq = kzalloc(sizeof(*ureq), GFP_KERNEL);
++		if (!ureq)
+ 			goto error;
++		video->ureq[i] = ureq;
+ 
+-		video->req[i] = usb_ep_alloc_request(video->ep, GFP_KERNEL);
+-		if (video->req[i] == NULL)
++		ureq->req_buffer = kmalloc(video->req_size, GFP_KERNEL);
++		if (!ureq->req_buffer)
+ 			goto error;
+ 
+-		video->req[i]->buf = video->req_buffer[i];
+-		video->req[i]->length = 0;
+-		video->req[i]->complete = uvc_video_complete;
+-		video->req[i]->context = video;
++		ureq->req = usb_ep_alloc_request(video->ep, GFP_KERNEL);
++		if (!ureq->req)
++			goto error;
+ 
+-		list_add_tail(&video->req[i]->list, &video->req_free);
+-	}
++		ureq->req->buf = ureq->req_buffer;
++		ureq->req->length = 0;
++		ureq->req->zero = 0;
++		ureq->req->complete = uvc_video_complete;
++		ureq->req->context = ureq;
++		ureq->video = video;
++		ureq->last_buf = NULL;
++		ureq->queued = false;
+ 
+-	video->req_size = req_size;
++		list_add_tail(&ureq->req->list, &video->req_free);
++	}
+ 
+ 	return 0;
+ 
+@@ -293,61 +468,146 @@ uvc_video_alloc_requests(struct uvc_video *video)
+ /*
+  * uvcg_video_pump - Pump video data into the USB requests
+  *
+- * This function fills the available USB requests (listed in req_free) with
+- * video data from the queued buffers.
++ * Fill free USB requests from queued V4L2 buffers. Bulk requests go directly
++ * to the endpoint. Isochronous requests wait in req_ready and are submitted by
++ * the dedicated hardware worker.
+  */
+-int uvcg_video_pump(struct uvc_video *video)
++static void uvcg_video_pump(struct work_struct *work)
+ {
++	struct uvc_video *video = container_of(work, struct uvc_video, pump);
+ 	struct uvc_video_queue *queue = &video->queue;
+-	struct usb_request *req;
++	bool is_bulk = video->max_payload_size;
++	struct usb_request *req = NULL;
++	struct uvc_request *ureq;
+ 	struct uvc_buffer *buf;
+ 	unsigned long flags;
+-	int ret;
+-
+-	/* FIXME TODO Race between uvcg_video_pump and requests completion
+-	 * handler ???
+-	 */
++	bool cancel_queue = false;
++	bool padding;
++	int ret = 0;
+ 
+ 	while (1) {
+-		/* Retrieve the first available USB request, protected by the
+-		 * request lock.
+-		 */
++		padding = false;
++		if (!video->ep->enabled)
++			break;
++
+ 		spin_lock_irqsave(&video->req_lock, flags);
+-		if (list_empty(&video->req_free)) {
++		if (!video->is_enabled || !video->ep->enabled ||
++		    list_empty(&video->req_free)) {
+ 			spin_unlock_irqrestore(&video->req_lock, flags);
+-			return 0;
++			break;
+ 		}
+ 		req = list_first_entry(&video->req_free, struct usb_request,
+ 					list);
+ 		list_del(&req->list);
++		if (!is_bulk && video->frame_padding) {
++			--video->frame_padding;
++			padding = true;
++		}
+ 		spin_unlock_irqrestore(&video->req_lock, flags);
+ 
+-		/* Retrieve the first available video buffer and fill the
+-		 * request, protected by the video queue irqlock.
+-		 */
+-		spin_lock_irqsave(&queue->irqlock, flags);
+-		buf = uvcg_queue_head(queue);
+-		if (buf == NULL) {
++		if (padding) {
++			req->length = 0;
++			req->zero = 0;
++		} else {
++			spin_lock_irqsave(&queue->irqlock, flags);
++			buf = uvcg_queue_head(queue);
++			if (!buf) {
++				spin_unlock_irqrestore(&queue->irqlock, flags);
++				break;
++			}
++
++			video->encode(req, video, buf);
++			if (!is_bulk) {
++				ureq = req->context;
++				++video->frame_req_count;
++				if (ureq->last_buf) {
++					if (video->frame_req_count <
++					    video->reqs_per_frame)
++						video->frame_padding =
++							video->reqs_per_frame -
++							video->frame_req_count;
++					else
++						video->frame_padding = 0;
++					video->frame_req_count = 0;
++				}
++			}
+ 			spin_unlock_irqrestore(&queue->irqlock, flags);
+-			break;
+ 		}
+ 
+-		video->encode(req, video, buf);
+-
+-		/* Queue the USB request */
+-		ret = uvcg_video_ep_queue(video, req);
+-		spin_unlock_irqrestore(&queue->irqlock, flags);
++		spin_lock_irqsave(&video->req_lock, flags);
++		if (!video->is_enabled || !video->ep->enabled) {
++			list_add_tail(&req->list, &video->req_free);
++			spin_unlock_irqrestore(&video->req_lock, flags);
++			wake_up_all(&video->req_wait);
++			req = NULL;
++			break;
++		}
+ 
++		ret = uvcg_video_usb_req_queue(video, req, is_bulk);
+ 		if (ret < 0) {
+-			uvcg_queue_cancel(queue, 0);
+-			break;
++			list_add_tail(&req->list, &video->req_free);
++			cancel_queue = true;
++			req = NULL;
+ 		}
++		spin_unlock_irqrestore(&video->req_lock, flags);
++		if (cancel_queue)
++			break;
++		req = NULL;
+ 	}
+ 
++	if (req) {
++		spin_lock_irqsave(&video->req_lock, flags);
++		list_add_tail(&req->list, &video->req_free);
++		spin_unlock_irqrestore(&video->req_lock, flags);
++		wake_up_all(&video->req_wait);
++	}
++
++	if (cancel_queue)
++		uvcg_queue_cancel(queue, 0);
++	else if (!is_bulk)
++		kthread_queue_work(video->kworker, &video->hw_submit);
++}
++
++static bool uvc_video_all_requests_idle(struct uvc_video *video)
++{
++	struct usb_request *req;
++	unsigned int allocated = 0;
++	unsigned int idle = 0;
++	unsigned int i;
++	unsigned long flags;
++
++	for (i = 0; i < UVC_NUM_REQUESTS; ++i)
++		if (video->ureq[i])
++			++allocated;
++
+ 	spin_lock_irqsave(&video->req_lock, flags);
+-	list_add_tail(&req->list, &video->req_free);
++	list_for_each_entry(req, &video->req_free, list)
++		++idle;
++	list_for_each_entry(req, &video->req_ready, list)
++		++idle;
+ 	spin_unlock_irqrestore(&video->req_lock, flags);
+-	return 0;
++
++	return idle == allocated && atomic_read(&video->queued) == 0;
++}
++
++static void uvc_video_dequeue_inflight_requests(struct uvc_video *video)
++{
++	struct usb_request *req;
++	struct uvc_request *ureq;
++	unsigned long flags;
++	unsigned int i;
++	bool queued;
++
++	for (i = 0; i < UVC_NUM_REQUESTS; ++i) {
++		spin_lock_irqsave(&video->req_lock, flags);
++		ureq = video->ureq[i];
++		queued = ureq && ureq->queued;
++		req = queued ? ureq->req : NULL;
++		spin_unlock_irqrestore(&video->req_lock, flags);
++
++		if (req)
++			usb_ep_dequeue(video->ep, req);
++	}
+ }
+ 
+ /*
+@@ -355,8 +615,13 @@ int uvcg_video_pump(struct uvc_video *video)
+  */
+ int uvcg_video_enable(struct uvc_video *video, int enable)
+ {
+-	unsigned int i;
++	LIST_HEAD(inflight_bufs);
++	struct uvc_buffer *buf;
++	struct uvc_buffer *btemp;
++	struct uvc_request *ureq;
+ 	int ret;
++	unsigned int i;
++	unsigned long flags;
+ 
+ 	if (video->ep == NULL) {
+ 		printk(KERN_INFO "Video enable failed, device is "
+@@ -365,9 +630,59 @@ int uvcg_video_enable(struct uvc_video *video, int enable)
+ 	}
+ 
+ 	if (!enable) {
+-		for (i = 0; i < UVC_NUM_REQUESTS; ++i)
+-			if (video->req[i])
+-				usb_ep_dequeue(video->ep, video->req[i]);
++		spin_lock_irqsave(&video->req_lock, flags);
++		video->is_enabled = false;
++		spin_unlock_irqrestore(&video->req_lock, flags);
++
++		cancel_work_sync(&video->pump);
++		if (video->kworker)
++			kthread_cancel_work_sync(&video->hw_submit);
++
++		/*
++		 * DWC3 returns every in-flight request synchronously when the
++		 * endpoint is disabled. Requests already prepared in req_ready
++		 * are idle and can be freed after the same drain barrier.
++		 */
++		if (video->ep->enabled)
++			usb_ep_disable(video->ep);
++
++		if (!wait_event_timeout(video->req_wait,
++					uvc_video_all_requests_idle(video),
++					msecs_to_jiffies(1000))) {
++			pr_warn("%s: forcing stale UVC requests out of the endpoint\n",
++				__func__);
++			uvc_video_dequeue_inflight_requests(video);
++			if (!wait_event_timeout(video->req_wait,
++						uvc_video_all_requests_idle(
++							video),
++						msecs_to_jiffies(1000))) {
++				pr_err("%s: timed out draining UVC requests\n",
++				       __func__);
++				return -ETIMEDOUT;
++			}
++		}
++
++		/*
++		 * Encoded buffers leave irqqueue when their final USB request
++		 * is prepared. Return buffers whose final request was waiting
++		 * in req_ready when streaming stopped.
++		 */
++		spin_lock_irqsave(&video->req_lock, flags);
++		for (i = 0; i < UVC_NUM_REQUESTS; ++i) {
++			ureq = video->ureq[i];
++			if (!ureq || !ureq->last_buf)
++				continue;
++			list_add_tail(&ureq->last_buf->queue, &inflight_bufs);
++			ureq->last_buf = NULL;
++		}
++		spin_unlock_irqrestore(&video->req_lock, flags);
++
++		spin_lock_irqsave(&video->queue.irqlock, flags);
++		list_for_each_entry_safe(buf, btemp, &inflight_bufs, queue) {
++			list_del(&buf->queue);
++			uvcg_complete_buffer(&video->queue, buf);
++		}
++		spin_unlock_irqrestore(&video->queue.irqlock, flags);
+ 
+ 		uvc_video_free_requests(video);
+ 		uvcg_queue_enable(&video->queue, 0);
+@@ -377,8 +692,18 @@ int uvcg_video_enable(struct uvc_video *video, int enable)
+ 	if ((ret = uvcg_queue_enable(&video->queue, 1)) < 0)
+ 		return ret;
+ 
+-	if ((ret = uvc_video_alloc_requests(video)) < 0)
++	ret = uvc_video_alloc_requests(video);
++	if (ret < 0) {
++		uvcg_queue_enable(&video->queue, 0);
+ 		return ret;
++	}
++
++	spin_lock_irqsave(&video->req_lock, flags);
++	video->is_enabled = true;
++	video->frame_req_count = 0;
++	video->frame_padding = 0;
++	atomic_set(&video->queued, 0);
++	spin_unlock_irqrestore(&video->req_lock, flags);
+ 
+ 	if (video->max_payload_size) {
+ 		video->encode = uvc_video_encode_bulk;
+@@ -386,7 +711,33 @@ int uvcg_video_enable(struct uvc_video *video, int enable)
+ 	} else
+ 		video->encode = uvc_video_encode_isoc;
+ 
+-	return uvcg_video_pump(video);
++	video->missed_xfer_count = 0;
++	pr_info("uvcvideo: stream interval %u, %u requests/frame, %u bytes/request, %u in flight.\n",
++		video->interval, video->reqs_per_frame, video->req_size,
++		UVCG_REQ_MAX_INFLIGHT);
++	kthread_queue_work(video->kworker, &video->hw_submit);
++	queue_work(video->async_wq, &video->pump);
++	return 0;
++}
++
++void uvcg_video_cleanup(struct uvc_video *video)
++{
++	if (!video->async_wq && !video->kworker)
++		return;
++
++	if (video->ureq[0])
++		uvcg_video_enable(video, 0);
++	if (video->async_wq)
++		cancel_work_sync(&video->pump);
++	if (video->kworker) {
++		kthread_cancel_work_sync(&video->hw_submit);
++		kthread_destroy_worker(video->kworker);
++		video->kworker = NULL;
++	}
++	if (video->async_wq) {
++		destroy_workqueue(video->async_wq);
++		video->async_wq = NULL;
++	}
+ }
+ 
+ /*
+@@ -394,18 +745,57 @@ int uvcg_video_enable(struct uvc_video *video, int enable)
+  */
+ int uvcg_video_init(struct uvc_video *video)
+ {
++	struct sched_param sched_param = {
++		.sched_priority = MAX_RT_PRIO / 2,
++	};
++	int ret;
++
+ 	INIT_LIST_HEAD(&video->req_free);
++	INIT_LIST_HEAD(&video->req_ready);
+ 	spin_lock_init(&video->req_lock);
++	init_waitqueue_head(&video->req_wait);
++	INIT_WORK(&video->pump, uvcg_video_pump);
++	video->async_wq = alloc_workqueue("uvcgadget",
++					 WQ_UNBOUND | WQ_HIGHPRI, 0);
++	if (!video->async_wq)
++		return -ENOMEM;
++
++	video->kworker = kthread_create_worker(0, "UVCG");
++	if (IS_ERR(video->kworker)) {
++		ret = PTR_ERR(video->kworker);
++		video->kworker = NULL;
++		destroy_workqueue(video->async_wq);
++		video->async_wq = NULL;
++		return ret;
++	}
++	kthread_init_work(&video->hw_submit, uvcg_video_hw_submit);
++	ret = sched_setscheduler_nocheck(video->kworker->task, SCHED_FIFO,
++					&sched_param);
++	if (ret)
++		pr_warn("uvcvideo: failed to prioritize USB submit worker (%d)\n",
++			ret);
++
++	video->is_enabled = false;
++	video->req_size = 0;
++	video->max_req_size = 0;
++	video->uvc_num_requests = 0;
++	video->reqs_per_frame = 0;
++	video->frame_req_count = 0;
++	video->frame_padding = 0;
++	atomic_set(&video->queued, 0);
++	video->missed_xfer_count = 0;
+ 
+ 	video->fcc = V4L2_PIX_FMT_YUYV;
+ 	video->bpp = 16;
+ 	video->width = 320;
+ 	video->height = 240;
+ 	video->imagesize = 320 * 240 * 2;
++	video->interval = 333333;
+ 
+ 	/* Initialize the video buffers queue. */
+-	uvcg_queue_init(&video->queue, V4L2_BUF_TYPE_VIDEO_OUTPUT,
+-			&video->mutex);
+-	return 0;
++	ret = uvcg_queue_init(&video->queue, V4L2_BUF_TYPE_VIDEO_OUTPUT,
++			      &video->mutex);
++	if (ret)
++		uvcg_video_cleanup(video);
++	return ret;
+ }
+-
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.h b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.h
+index 7d77122b0ff9..23676ee0d29a 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.h
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/uvc_video.h
+@@ -14,10 +14,10 @@
+ 
+ struct uvc_video;
+ 
+-int uvcg_video_pump(struct uvc_video *video);
+-
+ int uvcg_video_enable(struct uvc_video *video, int enable);
++void uvcg_video_prep_requests(struct uvc_video *video);
+ 
+ int uvcg_video_init(struct uvc_video *video);
++void uvcg_video_cleanup(struct uvc_video *video);
+ 
+ #endif /* __UVC_VIDEO_H__ */

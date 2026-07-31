@@ -1,6 +1,9 @@
-# Current Mi 10 Pro Audit
+# Mi 10 Pro Stock Baseline Audit
 
 Audit date: 2026-07-01
+
+This records the ordinary LineageOS baseline used before the CaCamOS 1.2.0
+port. Current CaCamOS source acceptance is tracked in `V1_2_ACCEPTANCE.md`.
 
 Connected device:
 

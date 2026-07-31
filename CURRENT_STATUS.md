@@ -1,18 +1,36 @@
-# Current CaCamOS MI8 Status
+# Current CaCamOS Status
 
-Status date: 2026-07-29
+Status date: 2026-07-31
 
-## Release
+## Xiaomi Mi 10 Pro
 
-CaCamOS 1.0.0 is built, installed and physically qualified on the Xiaomi Mi 8
+CaCamOS 1.2.0 publishes the complete dedicated appliance source port for the
+Xiaomi Mi 10 Pro (`cmi`) on LineageOS 23.2 / Android 16.
+
+- Fourteen exact-base patches reproduce every modified Android project.
+- The product boots as CaCamOS directly into DeviceAsWebcam, without a lock
+  screen or consumer applications.
+- The physical cable exposes standard UVC video and UAC2 audio; authenticated
+  maintenance ADB stays on Wi-Fi.
+- MJPEG 1280x720, 1024x576 and 1920x1080 are advertised at 15 and 30 FPS.
+- The Snapdragon 865 port carries the robust asynchronous UVC pipeline and
+  hardware JPEG path.
+- The user confirmed normal operation on Windows with the physical MI10 Pro.
+- The controlled build profile uses ten workers and reserves six host cores.
+
+Acceptance record: `lineageos/cmi/V1_2_ACCEPTANCE.md`.
+
+## Xiaomi Mi 8 Release
+
+CaCamOS 1.1.0 is built, installed and physically qualified on the Xiaomi Mi 8
 (`dipper`).
 
 ```text
-release=lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.0-dipper.zip
+release=lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
 source=out/target/product/dipper/lineage_dipper-ota.zip
-size=1068308344
-sha256=7ff904f2bd95bda315266ab7c40b5d1fa2c2a6a354c53c15ae0393761360e1ea
-build_incremental=1785337449
+size=1068470898
+sha256=26c95ecf7ba4886b55f64bfae298b9f799c91fc8a2ee25476abc8f936f4879ca
+build_incremental=1785352812
 ```
 
 The complete fourteen-patch series reproduces the audited LineageOS
@@ -23,12 +41,13 @@ gates pass.
 
 The installed release proves:
 
-- `ro.cacamos.version=1.0.0` and `ro.cacamos.appliance=true`;
+- `ro.cacamos.version=1.1.0` and `ro.cacamos.appliance=true`;
 - CaCamOS product and boot branding;
 - automatic startup into the DeviceAsWebcam preview;
 - no lock screen, consumer setup flow or generic launcher;
 - no browser, gallery or music player;
-- exactly UVC on the physical USB cable;
+- standard UVC video and UAC2 audio on the physical USB cable;
+- real microphone capture and speaker playback at 48 kHz on Linux and Windows;
 - authenticated ADB maintenance over Wi-Fi, with legacy open TCP ADB disabled;
 - the standard Linux `uvcvideo` driver and USB identity `18d1:4eed`.
 
@@ -46,7 +65,7 @@ The old 360p and YUYV modes are intentionally absent.
 
 ## Stability
 
-CaCamOS 1.0.0 queues a valid black MJPEG frame before `VIDIOC_STREAMON`.
+CaCamOS 1.1.0 retains the valid black MJPEG frame before `VIDIOC_STREAMON`.
 Applications with a short initial-frame deadline, including stock OBS, can
 therefore open the camera while the MI8 camera HAL produces its first frame.
 

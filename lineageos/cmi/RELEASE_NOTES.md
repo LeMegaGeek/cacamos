@@ -1,8 +1,39 @@
-# CaCam OS cmi Webcam Addon 0.5.3
+# CaCamOS 1.2.0 for Xiaomi Mi 10 Pro (`cmi`)
+
+Dedicated webcam OS source integration for LineageOS 23.2 / Android 16.
+
+## Included
+
+- CaCamOS appliance branding and boot animation.
+- Automatic startup in the persistent DeviceAsWebcam preview.
+- No lock screen, consumer setup flow, generic launcher, browser, gallery or
+  music application.
+- Standard UVC webcam plus UAC2 microphone and speakers on one physical USB
+  cable, without BGOBS or a host driver.
+- Authenticated wireless ADB for maintenance; USB ADB is deliberately disabled
+  during normal operation.
+- MJPEG 1280x720, 1024x576 and 1920x1080 at 15 and 30 FPS.
+- Hardware JPEG encoding, bounded frame pacing, warmup frame, reliable stream
+  restart and robust `sm8250` UVC request/disconnect handling.
+- Persistent wireless-debugging and no-lock defaults, recovery ADB and startup
+  diagnostics.
+- A fourteen-patch reproducible source series tied to exact LineageOS base
+  revisions.
+- A controlled ten-worker build profile that leaves six cores available on the
+  sixteen-core host.
+
+## Validation
+
+- Every patch recreates the audited local Android worktrees exactly.
+- The complete source verifier passes for `cmi`.
+- Standard Windows webcam interoperability was confirmed by the user on the
+  physical MI10 Pro.
+
+## Previous 0.5.3 Addon
 
 Xiaomi Mi 10 Pro (`cmi`) LineageOS integration for standard USB webcam mode.
 
-## Included
+### Included
 
 - Enables Android/LineageOS `DeviceAsWebcam`.
 - Advertises UVC support at boot with `ro.usb.uvc.enabled=true`.
@@ -26,13 +57,13 @@ Xiaomi Mi 10 Pro (`cmi`) LineageOS integration for standard USB webcam mode.
 - Adds `CURRENT_SOURCE_PREFLIGHT.md` with current source-side proof and the
   remaining runtime proof steps.
 
-## Expected Result
+### Expected Result
 
 After building and flashing a LineageOS image with this patch, the Mi 10 Pro can
 be selected by a PC as a regular USB Video Class webcam. OBS should use it as a
 normal Video Capture Device, without BGOBS and without network streaming.
 
-## Known Limits
+### Known Limits
 
 - Not a flashable ROM ZIP yet; this is a source-tree addon patch.
 - The stock `23.2-20260626-NIGHTLY-cmi` still has

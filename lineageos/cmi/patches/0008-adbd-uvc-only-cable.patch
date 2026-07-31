@@ -1,0 +1,24 @@
+diff --git a/packages/modules/adb/daemon/main.cpp b/packages/modules/adb/daemon/main.cpp
+index 87e56dde..b7a07f9d 100644
+--- a/packages/modules/adb/daemon/main.cpp
++++ b/packages/modules/adb/daemon/main.cpp
+@@ -256,7 +256,18 @@ int adbd_main() {
+     bool is_usb = false;
+ 
+ #if defined(__ANDROID__)
+-    if (access(USB_FFS_ADB_EP0, F_OK) == 0) {
++    bool uvc_only = false;
++#if !defined(__ANDROID_RECOVERY__)
++    uvc_only = android::base::GetBoolProperty("ro.usb.uvc.enabled", false);
++#endif
++    if (uvc_only) {
++        /*
++         * CaCamOS reserves the cable for UVC. Treat USB as configured so the
++         * generic fallback below cannot expose an unauthenticated TCP port.
++         */
++        LOG(INFO) << "USB FunctionFS transport disabled by CaCamOS USB AV-only policy";
++        is_usb = true;
++    } else if (access(USB_FFS_ADB_EP0, F_OK) == 0) {
+         // Listen on USB.
+         usb_init();
+         is_usb = true;

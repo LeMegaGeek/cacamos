@@ -1,37 +1,37 @@
-# Build Requirements for CaCam OS `cmi`
+# Build Requirements for CaCamOS `cmi`
 
-To finish the ROM path, we need a complete LineageOS `lineage-23.2` build tree
-for Xiaomi Mi 10 Pro (`cmi`) and enough host tooling to run a full Android
-build.
+Qualified host profile on 2026-07-31:
 
-## Current Host Audit
+- 16 logical CPU cores;
+- 29 GiB RAM;
+- 81 GiB permanent swap;
+- at least 300 GiB free disk space;
+- OpenJDK 21 and the standard LineageOS 23.2 build dependencies;
+- a complete synchronized `lineage_cmi-bp4a-userdebug` source tree.
 
-Audit date: 2026-06-30
+The supported controlled build profile uses ten workers, reserves six cores and
+sets a Go memory ceiling:
 
-Available:
+```bash
+./lineageos/cmi/tools/build-lineage-gentle.sh \
+  --lineage-root /home/denis/Documents/Denis/dev/lineage-cmi \
+  --target bacon \
+  --jobs 10 \
+  --cpu-set 0-9 \
+  --reserve-cores 6 \
+  --go-memlimit-mib 18432 \
+  --min-free-mem-mib 5120 \
+  --min-free-swap-mib 32768
+```
 
-- Disk space: about 963 GiB free on `/`
-- CPU: 4 logical cores
-- RAM: about 11 GiB
-- Java: OpenJDK 21
-- Basic tools: `git`, `curl`, `python3`, `make`, `ninja`, `zip`, `unzip`, `bc`
+Before building, run:
 
-Missing or not detected:
+```bash
+./lineageos/cmi/tools/check-build-host.sh
+./lineageos/cmi/tools/check-lineage-source-preflight.sh \
+  /home/denis/Documents/Denis/dev/lineage-cmi
+```
 
-- `repo`
-- `ccache`
-- common Android build tools such as `bison`, `flex`, `lz4`, `brotli`
-- an existing LineageOS checkout
-
-## Practical Impact
-
-The CaCam OS source addon is ready, but the final ROM proof still requires:
-
-1. A synced LineageOS `lineage-23.2` tree with `device/xiaomi/cmi`.
-2. The addon applied with `tools/install-into-lineage.sh`.
-3. A successful `mka bacon`.
-4. Flashing the resulting build on the Mi 10 Pro.
-5. Host-side webcam verification in OBS or `v4l2-ctl`.
-
-The current machine has enough disk, but the missing build tools and limited RAM
-make a full local build uncertain without preparing the host first.
+Do not bypass the wrapper's memory watchdog or consume all sixteen cores. The
+profile is intentionally faster than the old small-PC build while retaining
+desktop and memory headroom.

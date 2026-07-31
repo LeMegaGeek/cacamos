@@ -1,0 +1,20 @@
+diff --git a/system/core/rootdir/init.rc b/system/core/rootdir/init.rc
+index 92dcdd013..049434790 100644
+--- a/system/core/rootdir/init.rc
++++ b/system/core/rootdir/init.rc
+@@ -1353,6 +1353,15 @@ service console /system/bin/sh
+     setenv HOSTNAME console
+     shutdown critical
+ 
++# Temporary CaCamOS first-boot probe. A failed appliance boot returns to recovery
++# with a bounded userspace snapshot instead of requiring another physical rescue.
++service cacamos_boot_probe /system/bin/sh /system/bin/cacamos_boot_probe.sh
++    class core
++    user root
++    group root system log cache shell
++    seclabel u:r:su:s0
++    oneshot
++
+ on property:ro.debuggable=1
+     # Give writes to the same group for the trace folder on debug builds,
+     # it's further protected by selinux policy.

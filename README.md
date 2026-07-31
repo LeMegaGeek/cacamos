@@ -5,6 +5,28 @@ microphone and speaker. The host uses its normal USB Video Class and USB
 Audio Class 2 drivers, so no CaCam application, BGOBS plugin or network
 transport is required.
 
+## Xiaomi Mi 10 Pro Source Release
+
+CaCamOS 1.2.0 adds the complete dedicated-OS port for the Xiaomi Mi 10 Pro
+(`cmi`), based on LineageOS 23.2 / Android 16. It carries the same standard UVC
+webcam and bidirectional UAC2 audio design as the MI8 release, adapted to the
+Snapdragon 865 kernel and the newer Android source tree.
+
+The MI10 Pro port includes:
+
+- CaCamOS boot branding and automatic persistent webcam preview;
+- no lock screen, consumer setup, generic launcher, browser, gallery or music
+  application;
+- MJPEG 1280x720, 1024x576 and 1920x1080 at 15 and 30 FPS;
+- standard USB microphone and speakers at 48 kHz;
+- authenticated wireless ADB while the physical cable stays dedicated to UVC
+  and UAC2;
+- a reproducible fourteen-patch series and controlled ten-worker build profile.
+
+The physical MI10 Pro was reported working through the normal Windows camera
+path. Full source acceptance is recorded in
+[`lineageos/cmi/V1_2_ACCEPTANCE.md`](lineageos/cmi/V1_2_ACCEPTANCE.md).
+
 ## Xiaomi Mi 8 Release
 
 CaCamOS 1.1.0 is the current dedicated webcam OS for the Xiaomi Mi 8
@@ -104,6 +126,15 @@ Verify the resulting source tree:
 ./lineageos/dipper/tools/verify-source-tree.sh /path/to/lineageos
 ```
 
+For the MI10 Pro LineageOS 23.2 tree, use the device-specific series:
+
+```bash
+./lineageos/cmi/tools/install-into-lineage.sh /path/to/lineage-cmi
+./lineageos/cmi/tools/verify-patch-series.sh \
+  --match-worktrees /path/to/lineage-cmi
+./lineageos/cmi/tools/verify-source-tree.sh /path/to/lineage-cmi
+```
+
 On the current 16-core build host, the qualified resource-controlled build
 uses ten cores and reserves six:
 
@@ -120,8 +151,8 @@ uses ten cores and reserves six:
   --min-free-swap-mib 32768
 ```
 
-The repository also retains the Mi 10 Pro (`cmi`) source addon. CaCamOS 1.1.0
-is qualified and released only for the Xiaomi Mi 8.
+The MI8 remains the downloadable OTA release. Version 1.2.0 publishes the full
+MI10 Pro source integration and its reproducibility/acceptance tooling.
 
 ## Host Check
 

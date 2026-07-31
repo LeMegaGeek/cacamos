@@ -2,6 +2,25 @@
 
 Source addons for exposing supported Xiaomi phones as standard USB webcams.
 
+## 1.2.0
+
+- Adds the complete dedicated CaCamOS port for the Xiaomi Mi 10 Pro (`cmi`),
+  based on LineageOS 23.2 / Android 16.
+- Publishes fourteen reproducible patches covering the device product,
+  framework USB defaults, DeviceAsWebcam, the `sm8250` UVC/UAC2 gadget,
+  SELinux, QTI USB HAL, Settings, ADB, recovery and the appliance package graph.
+- Boots with CaCamOS branding into the persistent webcam interface, without a
+  lock screen, setup wizard, generic launcher, browser, gallery or music app.
+- Keeps the physical USB cable dedicated to standard UVC video and UAC2 audio,
+  while authenticated maintenance ADB remains available over Wi-Fi.
+- Advertises MJPEG 1280x720, 1024x576 and 1920x1080 at 15 and 30 FPS.
+- Carries the asynchronous UVC request pipeline, disconnect recovery, hardware
+  JPEG path and bidirectional 48 kHz USB audio established on the MI8.
+- Adds exact-base and live-worktree patch verification plus a controlled
+  ten-worker build profile that reserves six of the host's sixteen cores.
+- Records the successful Windows interoperability test reported on the physical
+  Xiaomi Mi 10 Pro.
+
 ## 1.1.0
 
 - Extends the standard UVC webcam into a standard USB Audio Class 2 composite
