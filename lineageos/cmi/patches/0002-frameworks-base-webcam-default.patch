@@ -42,10 +42,18 @@ index c3ef357178cb..df9d127cc6bd 100644
    <java-symbol type="bool" name="config_skipScreenOffTransition" />
    <java-symbol type="bool" name="config_allowAutoBrightnessWhileDozing" />
 diff --git a/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java b/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
-index 1e3229c9e3ab..38a804796814 100644
+index 1e3229c9e3ab..255867af22bd 100644
 --- a/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
 +++ b/frameworks/base/services/core/java/com/android/server/adb/AdbDebuggingManager.java
-@@ -111,6 +111,7 @@ public class AdbDebuggingManager {
+@@ -56,6 +56,7 @@ import android.os.Handler;
+ import android.os.Looper;
+ import android.os.Message;
+ import android.os.SystemClock;
++import android.os.SystemProperties;
+ import android.os.SystemService;
+ import android.os.UserHandle;
+ import android.os.UserManager;
+@@ -111,6 +112,7 @@ public class AdbDebuggingManager {
  
      private final Context mContext;
      private final ContentResolver mContentResolver;
@@ -53,7 +61,7 @@ index 1e3229c9e3ab..38a804796814 100644
      @VisibleForTesting final AdbDebuggingHandler mHandler;
      private boolean mAdbUsbEnabled = false;
      private boolean mAdbWifiEnabled = false;
-@@ -121,6 +122,9 @@ public class AdbDebuggingManager {
+@@ -121,6 +123,9 @@ public class AdbDebuggingManager {
      @Nullable private final File mUserKeyFile;
      @Nullable private final File mTempKeysFile;
  
@@ -63,7 +71,7 @@ index 1e3229c9e3ab..38a804796814 100644
      static final String WIFI_PERSISTENT_GUID = "persist.adb.wifi.guid";
      private static final int PAIRING_CODE_LENGTH = 6;
  
-@@ -173,6 +177,8 @@ public class AdbDebuggingManager {
+@@ -173,6 +178,8 @@ public class AdbDebuggingManager {
              Ticker ticker) {
          mContext = context;
          mContentResolver = mContext.getContentResolver();
@@ -72,7 +80,7 @@ index 1e3229c9e3ab..38a804796814 100644
          mConfirmComponent = confirmComponent;
          mUserKeyFile = testUserKeyFile;
          mTempKeysFile = tempKeysFile;
-@@ -814,8 +820,16 @@ public class AdbDebuggingManager {
+@@ -814,8 +821,16 @@ public class AdbDebuggingManager {
  
                      AdbConnectionInfo currentInfo = getCurrentWifiApInfo();
                      if (currentInfo == null) {
@@ -91,7 +99,7 @@ index 1e3229c9e3ab..38a804796814 100644
                          break;
                      }
  
-@@ -834,8 +848,8 @@ public class AdbDebuggingManager {
+@@ -834,8 +849,8 @@ public class AdbDebuggingManager {
                      startTLSPortPoller();
                      startAdbdWifi();
                      mAdbWifiEnabled = true;
@@ -102,7 +110,7 @@ index 1e3229c9e3ab..38a804796814 100644
                  }
                  case MSG_ADBDWIFI_DISABLE -> {
                      if (!mAdbWifiEnabled) {
-@@ -869,6 +883,7 @@ public class AdbDebuggingManager {
+@@ -869,6 +884,7 @@ public class AdbDebuggingManager {
                      ensureAdbDebuggingThreadAlive();
                      startTLSPortPoller();
                      startAdbdWifi();
@@ -110,7 +118,7 @@ index 1e3229c9e3ab..38a804796814 100644
                      mAdbWifiEnabled = true;
                      Slog.i(TAG, "adb start wireless adb");
                  }
-@@ -944,12 +959,26 @@ public class AdbDebuggingManager {
+@@ -944,12 +960,26 @@ public class AdbDebuggingManager {
                  case MSG_SERVER_CONNECTED -> {
                      int port = (int) msg.obj;
                      onAdbdWifiServerConnected(port);
@@ -138,7 +146,7 @@ index 1e3229c9e3ab..38a804796814 100644
                      int port = (int) msg.obj;
                      onAdbdWifiServerDisconnected(port);
                      stopTLSPortPoller();
-@@ -1125,6 +1154,9 @@ public class AdbDebuggingManager {
+@@ -1125,6 +1155,9 @@ public class AdbDebuggingManager {
          }
  
          private boolean verifyWifiNetwork(String bssid, String ssid) {
