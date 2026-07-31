@@ -150,6 +150,13 @@ lineage_root="$(cd "$lineage_root" && pwd)"
 [[ -d "$lineage_root/device/xiaomi/cmi" ]] || fail "missing device/xiaomi/cmi"
 "$script_dir/verify-source-tree.sh" "$lineage_root"
 
+webview_apk="$lineage_root/external/chromium-webview/prebuilt/arm64/webview.apk"
+[[ -s "$webview_apk" ]] || fail "missing Chromium WebView prebuilt: $webview_apk"
+if grep -q '^version https://git-lfs.github.com/spec/v1$' "$webview_apk"; then
+    fail "Chromium WebView is still a Git LFS pointer; install git-lfs and fetch the arm64 prebuilt"
+fi
+unzip -tq "$webview_apk" >/dev/null || fail "invalid Chromium WebView APK: $webview_apk"
+
 mem_available_kib="$(mem_kib MemAvailable)"
 swap_free_kib="$(mem_kib SwapFree)"
 load_1min="$(awk '{ print $1 }' /proc/loadavg)"
@@ -256,6 +263,7 @@ printf '\nStarting controlled MI10 Pro build target: %s\n' "$target"
 printf 'This can still take hours. Stop with Ctrl+C if the desktop becomes uncomfortable.\n\n'
 
 cd "$lineage_root"
+export OUT_DIR="${OUT_DIR:-out}"
 export GOMAXPROCS="$jobs"
 export GOMEMLIMIT="${go_memlimit_mib}MiB"
 export NINJA_ARGS="-j${jobs}"

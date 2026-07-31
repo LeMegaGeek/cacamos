@@ -7,6 +7,7 @@ Qualified host profile on 2026-07-31:
 - 81 GiB permanent swap;
 - at least 300 GiB free disk space;
 - OpenJDK 21 and the standard LineageOS 23.2 build dependencies;
+- Git LFS, with the Chromium WebView arm64 prebuilt fully hydrated;
 - a complete synchronized `lineage_cmi-bp4a-userdebug` source tree.
 
 The supported controlled build profile uses ten workers, reserves six cores and
@@ -20,8 +21,8 @@ sets a Go memory ceiling:
   --cpu-set 0-9 \
   --reserve-cores 6 \
   --go-memlimit-mib 18432 \
-  --min-free-mem-mib 5120 \
-  --min-free-swap-mib 32768
+  --min-free-mem-mib 2048 \
+  --min-free-swap-mib 16384
 ```
 
 Before building, run:
@@ -34,4 +35,5 @@ Before building, run:
 
 Do not bypass the wrapper's memory watchdog or consume all sixteen cores. The
 profile is intentionally faster than the old small-PC build while retaining
-desktop and memory headroom.
+desktop and memory headroom. The wrapper also rejects an unhydrated Git LFS
+pointer before the expensive build begins.

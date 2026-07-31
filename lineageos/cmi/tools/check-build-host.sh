@@ -3,6 +3,7 @@ set -euo pipefail
 
 required_commands=(
     git
+    git-lfs
     curl
     python3
     java

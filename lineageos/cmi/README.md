@@ -74,13 +74,14 @@ The qualified 16-core host profile uses ten workers and leaves six cores free:
   --cpu-set 0-9 \
   --reserve-cores 6 \
   --go-memlimit-mib 18432 \
-  --min-free-mem-mib 5120 \
-  --min-free-swap-mib 32768
+  --min-free-mem-mib 2048 \
+  --min-free-swap-mib 16384
 ```
 
 The wrapper performs memory and swap preflight checks, caps CPU affinity and
 build parallelism, lowers scheduler priority and stops the build if available
-memory falls below the configured threshold.
+memory falls below the configured threshold. It also verifies that the arm64
+Chromium WebView Git LFS object is present before starting Soong.
 
 ## Runtime Check
 
