@@ -1,6 +1,6 @@
 # CaCamOS 1.2.0 for Xiaomi Mi 10 Pro (`cmi`)
 
-Dedicated webcam OS source integration for LineageOS 23.2 / Android 16.
+Dedicated webcam OS release for LineageOS 23.2 / Android 16.
 
 ## Included
 
@@ -30,17 +30,20 @@ Dedicated webcam OS source integration for LineageOS 23.2 / Android 16.
   device-target, appliance-property and webcam-artifact verification. Its
   SHA-256 is
   `6543738bfcc6ce4d9bce233677f8b68919cbf324e2843c42cb65f956d2abc649`.
-- A physical MI10 Pro running the first 1.2.0 package enumerated as a standard
-  UVC 1.5 webcam and UAC2 audio device on Linux.
+- The final OTA is installed on a physical MI10 Pro and enumerates as
+  `CaCamOS Webcam`, with standard UVC 1.5 video and UAC2 audio on Linux.
 - 1280x720, 1024x576 and 1920x1080 at 30 FPS were captured successfully. The
   1080p test ran for 120 seconds without a freeze or dropped stream.
 - The 48 kHz mono USB microphone recorded successfully. USB speaker playback
   was confirmed by an acoustic 1 kHz return recording through the phone.
 - Appliance startup, persistent wireless ADB, UVC-only cable ownership, HOME
   webcam preview, removal of consumer applications and credential clearing all
-  passed on the physical device.
-- Installation of the final identity/recovery-corrected OTA and standard
-  Windows interoperability remain pending.
+  passed before and after an unattended reboot.
+- A host USB reset was followed by successful video, microphone and speaker
+  recovery. A post-reset 1024x576 stream returned to 29.97 FPS.
+- The installed recovery partition exactly matches the CaCamOS recovery image
+  embedded in the OTA, so later CaCamOS packages use the matching trust store.
+- Physical Windows interoperability on this MI10 Pro remains to be recorded.
 
 ## Previous 0.5.3 Addon
 

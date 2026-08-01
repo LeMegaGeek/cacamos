@@ -11,7 +11,15 @@ not involved.
 - Codename: `cmi`
 - Platform: Qualcomm Snapdragon 865 / `sm8250`
 - Base: LineageOS 23.2 / Android 16
-- CaCamOS source release: `1.2.0`
+- CaCamOS release: `1.2.0`
+
+Qualified OTA:
+
+```text
+lineage-23.2-20260801-UNOFFICIAL-CACAMOS-1.2.0-cmi.zip
+size=1422445300
+sha256=6543738bfcc6ce4d9bce233677f8b68919cbf324e2843c42cb65f956d2abc649
+```
 
 The kernel already enables the required gadget functions:
 
@@ -101,8 +109,10 @@ arecord -l
 aplay -l
 ```
 
-Windows, Teams, OBS and browsers should select CaCamOS through their normal
-camera and audio device menus. Physical MI10 Pro qualification remains pending.
+Windows, Teams, OBS and browsers select CaCamOS through their normal camera and
+audio device menus. Physical Linux qualification on the MI10 Pro passed for
+video, microphone, speaker, reboot and host USB reset recovery. A physical
+Windows test on this MI10 Pro remains to be recorded.
 
 ## Reproducibility
 

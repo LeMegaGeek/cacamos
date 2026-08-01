@@ -5,7 +5,7 @@ microphone and speaker. The host uses its normal USB Video Class and USB
 Audio Class 2 drivers, so no CaCam application, BGOBS plugin or network
 transport is required.
 
-## Xiaomi Mi 10 Pro Source Release
+## Xiaomi Mi 10 Pro Release
 
 CaCamOS 1.2.0 adds the complete dedicated-OS port for the Xiaomi Mi 10 Pro
 (`cmi`), based on LineageOS 23.2 / Android 16. It carries the same standard UVC
@@ -24,8 +24,18 @@ The MI10 Pro port includes:
 - a reproducible fourteen-patch series and controlled ten-worker build profile.
 
 Source acceptance is recorded in
-[`lineageos/cmi/V1_2_ACCEPTANCE.md`](lineageos/cmi/V1_2_ACCEPTANCE.md). Physical
-MI10 Pro installation and Windows/Linux qualification are still in progress.
+[`lineageos/cmi/V1_2_ACCEPTANCE.md`](lineageos/cmi/V1_2_ACCEPTANCE.md). The final
+OTA is installed and qualified on the physical MI10 Pro under Linux:
+
+```text
+lineage-23.2-20260801-UNOFFICIAL-CACAMOS-1.2.0-cmi.zip
+size=1422445300
+sha256=6543738bfcc6ce4d9bce233677f8b68919cbf324e2843c42cb65f956d2abc649
+build_incremental=1785557872
+```
+
+Download:
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.2.0>
 
 ## Xiaomi Mi 8 Release
 
@@ -84,14 +94,22 @@ The complete acceptance record is in
 
 ## Installation
 
-CaCamOS MI8 installation is supported only through Lineage Recovery and ADB
+CaCamOS installation is supported only through Lineage Recovery and ADB
 sideload:
 
 1. Boot the phone into Lineage Recovery.
 2. For the first move from LineageOS or CaCamOS 0.x, format data. This erases
    the phone and removes legacy credentials and user state.
 3. Select **Apply update**, then **Apply from ADB**.
-4. On the host, run:
+4. On the host, run the command for the target device.
+
+MI10 Pro:
+
+```bash
+adb sideload lineage-23.2-20260801-UNOFFICIAL-CACAMOS-1.2.0-cmi.zip
+```
+
+MI8:
 
 ```bash
 adb sideload lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
@@ -151,8 +169,9 @@ uses ten cores and reserves six:
   --min-free-swap-mib 32768
 ```
 
-The MI8 remains the downloadable OTA release. Version 1.2.0 publishes the full
-MI10 Pro source integration and its reproducibility/acceptance tooling.
+The MI8 and MI10 Pro both have downloadable OTA releases. Version 1.2.0 also
+publishes the complete MI10 Pro source integration and its reproducibility and
+acceptance tooling.
 
 ## Host Check
 
