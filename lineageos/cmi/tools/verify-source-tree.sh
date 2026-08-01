@@ -21,6 +21,8 @@ lineage_root="$(cd "$lineage_root" && pwd)"
 device_dir="$lineage_root/device/xiaomi/cmi"
 device_mk="$device_dir/device.mk"
 device_product="$device_dir/lineage_cmi.mk"
+device_variant="$device_dir/libinit/libvariant_xiaomi_cmi.cpp"
+device_releasetools="$device_dir/releasetools.py"
 framework_overlay="$device_dir/rro_overlays/FrameworkResOverlayDevice/res/values/config.xml"
 webcam_overlay="$device_dir/rro_overlays/DeviceAsWebcamCaCamOsCmi"
 kernel_config="$lineage_root/kernel/xiaomi/sm8250/arch/arm64/configs/vendor/kona-perf_defconfig"
@@ -34,7 +36,8 @@ webcam_audio="$webcam_dir/interface/src/com/android/deviceaswebcam/UsbAudioBridg
 settings_controller="$lineage_root/packages/apps/Settings/src/com/android/settings/homepage/CaCamOsWebcamPreferenceController.java"
 
 for required in \
-    "$device_mk" "$device_product" "$framework_overlay" "$kernel_config" \
+    "$device_mk" "$device_product" "$device_variant" "$device_releasetools" \
+    "$framework_overlay" "$kernel_config" \
     "$kernel_uvc" "$kernel_uac2" "$usb_hal" "$webcam_manifest" \
     "$webcam_service" "$webcam_audio" "$settings_controller"; do
     [[ -f "$required" ]] || fail "missing $required"
@@ -46,6 +49,12 @@ grep -q 'ro.cacamos.version=1.2.0' "$device_product" ||
     fail "cmi does not expose CaCamOS version 1.2.0"
 grep -q 'ro.cacamos.appliance=true' "$device_product" ||
     fail "cmi appliance property is missing"
+grep -q '\.brand = "CaCamOS"' "$device_variant" &&
+    grep -q '\.model = "CaCamOS Mi 10 Pro Webcam"' "$device_variant" ||
+    fail "cmi runtime identity is not branded as CaCamOS"
+grep -q 'AddImage(info, "recovery.img", "/dev/block/bootdevice/by-name/recovery")' \
+    "$device_releasetools" ||
+    fail "cmi OTA does not install its matching CaCamOS recovery"
 grep -q 'CaCamOsDeviceAsWebcamCmi' "$device_mk" ||
     fail "cmi DeviceAsWebcam overlay is not included"
 grep -q 'ro.usb.uvc.enabled=true' "$device_mk" ||

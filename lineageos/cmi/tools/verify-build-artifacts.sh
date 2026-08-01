@@ -39,6 +39,10 @@ for entry in \
     grep -Fxq "$entry" <<< "$entries" || fail "OTA entry is missing: $entry"
 done
 
+updater_script="$(unzip -p "$ota_path" META-INF/com/google/android/updater-script)"
+grep -Fq 'package_extract_file("recovery.img", "/dev/block/bootdevice/by-name/recovery");' \
+    <<< "$updater_script" || fail "OTA does not install the CaCamOS recovery image"
+
 product_out="$lineage_root/out/target/product/cmi"
 system_prop="$product_out/system/build.prop"
 vendor_prop="$product_out/vendor/build.prop"
