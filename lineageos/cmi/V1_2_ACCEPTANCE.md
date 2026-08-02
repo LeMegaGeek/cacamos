@@ -1,6 +1,6 @@
 # CaCamOS 1.2.0 MI10 Pro Acceptance Status
 
-Status date: 2026-08-01
+Status date: 2026-08-02
 
 Target: Xiaomi Mi 10 Pro (`cmi`), LineageOS 23.2 / Android 16.
 
@@ -17,6 +17,7 @@ Target: Xiaomi Mi 10 Pro (`cmi`), LineageOS 23.2 / Android 16.
 | Appliance runtime | `CaCamOS Mi 10 Pro Webcam` identity, webcam preview at HOME, no consumer applications, no active credential, wireless ADB and UVC-only cable ownership | Passed before and after an unattended reboot |
 | USB recovery | Host USB reset followed by successful UVC and UAC2 re-enumeration, 29.97 FPS video capture, microphone capture and speaker playback | Passed |
 | Matching recovery | Raw recovery partition SHA-256 `aad51f4cf267deb8202deace94cd4549571ad2a2fa18d3a13462d1242cb703d1` matches the CaCamOS recovery embedded in the installed OTA | Passed |
+| Clean data partition | Physical MI10 Pro `/data` reformatted as F2FS; runtime verifier reports zero third-party packages | Passed |
 | Windows interoperability | Physical test on the MI10 Pro | Pending |
 | Controlled host resources | Ten-worker build profile, six reserved cores, memory watchdog | Passed |
 
@@ -42,7 +43,10 @@ session and is intentionally outside this release.
 The final identity/recovery-corrected OTA was installed through Lineage
 Recovery. Its whole-package signature, archive structure and target identity
 were verified before installation. The installed appliance passed the runtime
-verifier again after reboot without requiring a credential.
+verifier again after reboot without requiring a credential. The final clean
+qualification also reformatted `/data` as F2FS and confirmed that no third-party
+package remained. Simultaneous 1080p/30 video, microphone capture and a
+continuous 12-second acoustic USB speaker-return test passed after that format.
 
 ## Reproduction
 

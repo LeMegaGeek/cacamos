@@ -45,6 +45,7 @@ home_activity="$(adb_shell cmd package resolve-activity --brief \
 usb_dump="$(adb_shell dumpsys usb)"
 kernel_config="$(adb_shell 'zcat /proc/config.gz 2>/dev/null')"
 system_packages="$(adb_shell pm list packages -s)"
+third_party_packages="$(adb_shell pm list packages -3 | sed '/^[[:space:]]*$/d')"
 
 printf 'CaCamOS MI10 Pro runtime check\n'
 printf 'adb_target=%s\n' "$adb_serial"
@@ -83,6 +84,13 @@ for package_name in \
         fail "consumer package remains: $package_name"
     fi
 done
+
+if [[ -z "$third_party_packages" ]]; then
+    pass "data partition contains no third-party applications"
+else
+    fail "third-party applications remain in the data partition"
+    sed 's/^/  /' <<<"$third_party_packages" >&2
+fi
 
 for option in CONFIG_USB_CONFIGFS_F_UVC=y CONFIG_USB_CONFIGFS_F_UAC2=y; do
     grep -Fxq "$option" <<<"$kernel_config" && pass "kernel has $option" ||

@@ -23,6 +23,11 @@ The MI10 Pro port includes:
   and UAC2;
 - a reproducible fourteen-patch series and controlled ten-worker build profile.
 
+**Clean-install requirement:** the first installation from LineageOS or a
+CaCamOS 0.x build must include **Format data / factory reset** in Lineage
+Recovery. Sideloading an OTA updates the OS but does not erase `/data`; skipping
+this step preserves old applications, accounts, credentials and notifications.
+
 Source acceptance is recorded in
 [`lineageos/cmi/V1_2_ACCEPTANCE.md`](lineageos/cmi/V1_2_ACCEPTANCE.md). The final
 OTA is installed and qualified on the physical MI10 Pro under Linux:
@@ -98,8 +103,10 @@ CaCamOS installation is supported only through Lineage Recovery and ADB
 sideload:
 
 1. Boot the phone into Lineage Recovery.
-2. For the first move from LineageOS or CaCamOS 0.x, format data. This erases
-   the phone and removes legacy credentials and user state.
+2. For the first move from LineageOS or CaCamOS 0.x, select **Factory reset**,
+   then **Format data / factory reset**. This mandatory step erases `/data` and
+   removes all legacy applications, accounts, credentials and notifications.
+   ADB sideload alone does not perform this erasure.
 3. Select **Apply update**, then **Apply from ADB**.
 4. On the host, run the command for the target device.
 

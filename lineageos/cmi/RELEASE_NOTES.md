@@ -2,6 +2,13 @@
 
 Dedicated webcam OS release for LineageOS 23.2 / Android 16.
 
+## Clean Installation Required
+
+On the first move from LineageOS or CaCamOS 0.x, use **Format data / factory
+reset** in Lineage Recovery. ADB sideload updates the OS partitions but does
+not erase `/data`. Skipping the format preserves previous applications,
+accounts, credentials and notifications.
+
 ## Included
 
 - CaCamOS appliance branding and boot animation.
@@ -39,6 +46,12 @@ Dedicated webcam OS release for LineageOS 23.2 / Android 16.
 - Appliance startup, persistent wireless ADB, UVC-only cable ownership, HOME
   webcam preview, removal of consumer applications and credential clearing all
   passed before and after an unattended reboot.
+- The physical MI10 Pro data partition was reformatted as F2FS for the final
+  clean qualification. Runtime verification reports zero third-party packages;
+  no previous application or account remains.
+- After that clean format, simultaneous 1080p/30 video, USB microphone capture
+  and USB speaker playback passed again. The speaker return produced a
+  continuous 1 kHz signal for the complete 12-second playback interval.
 - A host USB reset was followed by successful video, microphone and speaker
   recovery. A post-reset 1024x576 stream returned to 29.97 FPS.
 - The installed recovery partition exactly matches the CaCamOS recovery image
