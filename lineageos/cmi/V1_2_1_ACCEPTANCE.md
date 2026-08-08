@@ -3,7 +3,7 @@
 Status date: 2026-08-08
 
 Status: energy and regression qualified on a physical Xiaomi Mi 10 Pro and a
-Linux host. Public GitHub publication is pending.
+Linux host. The exact OTA and checksum are publicly available on GitHub.
 
 ## Release Artifact
 
@@ -14,6 +14,7 @@ size=1422040935
 sha256=7f82397716a3138699764ba072446977f45cdda893d9c4aa7419659268ccc003
 build_incremental=1785781560
 lineage=23.2-20260803-UNOFFICIAL-cmi
+public_release=https://github.com/LeMegaGeek/cacamos/releases/tag/v1.2.1
 ```
 
 ## Acceptance Matrix
@@ -38,7 +39,7 @@ lineage=23.2-20260803-UNOFFICIAL-cmi
 | Video, microphone and speakers operate together | 720p30 acoustic round trip, tone ratio 0.1751 | Passed |
 | Standard Linux USB class drivers bind all functions | `uvcvideo`, `snd-usb-audio`, V4L2 and ALSA checks | Passed |
 | Damaged optional `/cache` no longer blocks installation | Physical 1.2.1 ADB sideload completed at `Total xfer: 1.00x` | Passed |
-| Exact OTA and checksum are published publicly | GitHub release `v1.2.1` | Pending |
+| Exact OTA and checksum are published publicly | GitHub release `v1.2.1`, anonymous HTTP 200 check | Passed |
 
 ## Energy Behavior
 
@@ -76,5 +77,5 @@ PowerManager reported `mWakefulness=Awake`, DisplayManager reported
 
 This record qualifies the 1.2.1 energy changes and the recovery resilience
 needed to install the release on the physical MI10 Pro. It preserves the
-broader UVC/UAC2 behavior qualified in 1.2.0. Public release publication remains
-the final gate.
+broader UVC/UAC2 behavior qualified in 1.2.0, and release `v1.2.1` publishes
+the exact qualified artifact.

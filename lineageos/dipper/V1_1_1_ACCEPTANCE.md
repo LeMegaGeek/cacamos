@@ -3,8 +3,7 @@
 Status date: 2026-08-08
 
 Status: energy and regression qualified on a physical Xiaomi Mi 8 and a Linux
-host. The matching MI10 Pro qualification passed; public GitHub publication is
-pending.
+host. The exact OTA and checksum are publicly available on GitHub.
 
 ## Release Artifact
 
@@ -15,6 +14,7 @@ size=1068468998
 sha256=b7c4094cfacbd6c647d20e821764fd0421ce35f484f2d519632304a6be23c79a
 build_incremental=1785784819
 lineage=22.2-20260803-UNOFFICIAL-dipper
+public_release=https://github.com/LeMegaGeek/cacamos/releases/tag/v1.1.1
 ```
 
 ## Acceptance Matrix
@@ -35,7 +35,7 @@ lineage=22.2-20260803-UNOFFICIAL-dipper
 | On-demand UAC2 audio still starts correctly | 288,000 microphone frames and physical speaker return | Passed |
 | Video, microphone and speakers still operate together | 720p30 acoustic round trip, tone ratio 0.8018 | Passed |
 | Standard Linux USB class drivers bind all functions | `uvcvideo`, `snd-usb-audio`, V4L2 and ALSA checks | Passed |
-| Exact OTA and checksum are published publicly | GitHub release `v1.1.1` | Pending |
+| Exact OTA and checksum are published publicly | GitHub release `v1.1.1`, anonymous HTTP 200 check | Passed |
 
 ## Energy Behavior
 
@@ -58,5 +58,5 @@ mono microphone frames while 720p30 UVC video remained active.
 
 This record qualifies the 1.1.1 energy changes and preserves the broader Linux
 and Windows UVC/UAC2 acceptance already recorded for version 1.1.0. The
-companion MI10 Pro completed the same physical energy checks; public release
-publication is the final gate.
+companion MI10 Pro completed the same physical energy checks, and release
+`v1.1.1` publishes the exact qualified artifact.
