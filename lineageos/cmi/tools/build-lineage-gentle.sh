@@ -4,17 +4,17 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lineage_root=""
 target="bacon"
-jobs=10
+jobs=6
 check_only=0
 allow_low_memory=0
 existing_graph=0
-reserve_cores=6
+reserve_cores=2
 cpu_set=""
 cpu_set_cores=0
-min_free_mem_mib=4096
-min_free_swap_mib=16384
+min_free_mem_mib=3584
+min_free_swap_mib=32768
 watchdog_interval_seconds=5
-go_memlimit_mib=18432
+go_memlimit_mib=8192
 
 usage() {
     cat >&2 <<'EOF'
@@ -24,29 +24,29 @@ Usage:
   build-lineage-gentle.sh --lineage-root /path/to/lineageos --check-only
 
 Runs the MI10 Pro LineageOS build with controlled resource limits:
-  - configurable build jobs, default 10
+  - configurable build jobs, default 6
   - GOMAXPROCS follows the job count
-  - six CPU cores reserved for the desktop when taskset is available
+  - two CPU cores reserved for the desktop when taskset is available
   - low CPU and IO priority
   - memory/swap preflight before starting
   - memory watchdog while the build is running
 
-This profile uses ten of sixteen cores while keeping the desktop responsive.
+This profile uses six of eight cores while keeping the desktop responsive.
 
 Options:
-  --jobs N            Build parallelism. Default: 10
+  --jobs N            Build parallelism. Default: 6
   --existing-graph    Run Ninja directly from the existing product graph.
                       Use only when Android.bp/Android.mk files are unchanged.
-  --reserve-cores N   Keep N CPU cores free for the desktop. Default: 6
+  --reserve-cores N   Keep N CPU cores free for the desktop. Default: 2
   --cpu-set LIST      Use an explicit taskset CPU list, for example 0-3
   --min-free-mem-mib N
                       Stop the build if MemAvailable drops below N MiB.
-                      Default: 4096
+                      Default: 3584
   --min-free-swap-mib N
                       Stop the build if SwapFree drops below N MiB.
-                      Default: 16384
+                      Default: 32768
   --go-memlimit-mib N
-                      GOMEMLIMIT for Soong/Go processes. Default: 18432
+                      GOMEMLIMIT for Soong/Go processes. Default: 8192
   --watchdog-interval N
                       Memory watchdog polling interval in seconds. Default: 5
   --allow-low-memory  Skip the memory/swap safety stop

@@ -1,8 +1,8 @@
 diff --git a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-index 2af999935683ce57d7d3ac60319d1ec15bc82139..33a10308d6fe5f9a2ef39f3bc0de068ba2f1a6c3 100644
+index 2af999935683ce57d7d3ac60319d1ec15bc82139..094fd92a7b21e7fa396af3589a56765f58ff1e3a 100644
 --- a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 +++ b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-@@ -9,30 +9,51 @@
+@@ -9,30 +9,52 @@
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
      <uses-permission android:name="android.permission.CAMERA"/>
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
@@ -10,6 +10,7 @@ index 2af999935683ce57d7d3ac60319d1ec15bc82139..33a10308d6fe5f9a2ef39f3bc0de068b
 +    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 +    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 +    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
++    <uses-permission android:name="android.permission.DEVICE_POWER"/>
  
      <application
 -         android:label="@string/app_label">
@@ -1265,7 +1266,7 @@ index b9c4d63c07ee8ad3b827aee48e6079eb4c14401f..6bd63b0758d0b6f60f1ca5835f42e8e6
      }
  
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
-index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f322c4d3684 100644
+index 47f92daf67c3144b6267e80dcda29bebb540bbab..ad23a696c6d228f31460daf264fc97b7ba1aaee6 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
 @@ -23,6 +23,7 @@ import android.animation.ObjectAnimator;
@@ -1276,13 +1277,15 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
  import android.content.Intent;
  import android.content.ServiceConnection;
  import android.content.res.Configuration;
-@@ -38,14 +39,17 @@ import android.hardware.camera2.CameraCharacteristics;
+@@ -38,14 +39,19 @@ import android.hardware.camera2.CameraCharacteristics;
  import android.hardware.camera2.CameraMetadata;
  import android.os.Bundle;
  import android.os.ConditionVariable;
 +import android.os.Handler;
  import android.os.IBinder;
 +import android.os.Looper;
++import android.os.PowerManager;
++import android.os.SystemClock;
 +import android.os.UserManager;
 +import android.provider.Settings;
  import android.util.Log;
@@ -1295,7 +1298,7 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
  import android.view.KeyEvent;
  import android.view.MotionEvent;
  import android.view.Surface;
-@@ -76,21 +80,21 @@ import com.android.deviceaswebcam.view.ZoomController;
+@@ -76,21 +82,23 @@ import com.android.deviceaswebcam.view.ZoomController;
  
  import java.util.List;
  import java.util.Objects;
@@ -1311,6 +1314,7 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
 -    private final Executor mThreadExecutor = Executors.newFixedThreadPool(2);
 -    private final ConditionVariable mWebcamControllerReady = new ConditionVariable();
 +    private static final long SERVICE_RETRY_INTERVAL_MS = 250;
++    private static final long SCREEN_TIMEOUT_MS = 30_000;
  
      private boolean mTextureViewSetup = false;
 +    private boolean mServiceBound = false;
@@ -1319,18 +1323,37 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
      private WebcamControllerImpl mWebcamController;
 +    private DeviceAsWebcamFgServiceImpl mWebcamService;
 +    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
++    private PowerManager mPowerManager;
      private AccessibilityManager mAccessibilityManager;
      private int mCurrRotation = Surface.ROTATION_0;
      private Size mCurrDisplaySize = new Size(0, 0);
-@@ -103,6 +107,7 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -103,8 +111,25 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
      private ZoomController mZoomController = null;
      private ImageButton mToggleCameraButton;
      private ImageButton mHighQualityToggleButton;
 +    private ImageButton mMaintenanceButton;
      private CameraPickerDialog mCameraPickerDialog;
  
++    private final Runnable mTurnScreenOff =
++            () -> {
++                if (mDestroyed || isFinishing() || mPowerManager == null) {
++                    return;
++                }
++                try {
++                    BootDiagnostics.record("preview-screen-timeout");
++                    mPowerManager.goToSleep(
++                            SystemClock.uptimeMillis(),
++                            PowerManager.GO_TO_SLEEP_REASON_TIMEOUT,
++                            0);
++                } catch (RuntimeException e) {
++                    BootDiagnostics.recordException("preview-screen-timeout-failed", e);
++                }
++            };
++
      private UserPrefs mUserPrefs;
-@@ -166,51 +171,7 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+ 
+     // A listener to monitor the preview size change events. This might be invoked when toggling
+@@ -166,51 +191,7 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
                                              TAG,
                                              "onSurfaceTextureAvailable " + width + " x " + height);
                                  }
@@ -1383,7 +1406,7 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
                              });
                  }
  
-@@ -241,28 +202,112 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -241,28 +222,112 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
              new ServiceConnection() {
                  @Override
                  public void onServiceConnected(ComponentName className, IBinder serviceBinder) {
@@ -1505,7 +1528,7 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
              };
  
      private MotionEventToZoomRatioConverter mMotionEventToZoomRatioConverter = null;
-@@ -318,6 +363,47 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -318,6 +383,47 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          mTextureViewCard.setLayoutParams(cardLayoutParams);
      }
  
@@ -1553,7 +1576,7 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
      @Override
      public void onConfigurationChanged(@NonNull Configuration newConfig) {
          super.onConfigurationChanged(newConfig);
-@@ -563,25 +649,23 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -563,25 +669,23 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
                      .setDuration(animationDuration);
              anim.setInterpolator(new AccelerateDecelerateInterpolator());
              anim.start();
@@ -1585,7 +1608,7 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
          }
  
          // Rotation angle of the view must be [-179, 180] to ensure we always rotate the
-@@ -603,18 +687,29 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -603,18 +707,34 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          runOnUiThread(
                  () -> {
                      try {
@@ -1612,12 +1635,17 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
 +        BootDiagnostics.install();
 +        BootDiagnostics.record("preview-created");
 +        mDestroyed = false;
-+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-+        setTurnScreenOn(true);
++        mPowerManager = getSystemService(PowerManager.class);
++        if (Settings.Secure.getInt(
++                        getContentResolver(), Settings.Secure.DOUBLE_TAP_TO_WAKE, 0)
++                != 1) {
++            Settings.Secure.putInt(
++                    getContentResolver(), Settings.Secure.DOUBLE_TAP_TO_WAKE, 1);
++        }
          setContentView(R.layout.preview_layout);
          mRootView = findViewById(R.id.container_view);
          mTextureViewContainer = findViewById(R.id.texture_view_container);
-@@ -625,6 +720,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -625,11 +745,15 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          mToggleCameraButton = findViewById(R.id.toggle_camera_button);
          mZoomController = findViewById(R.id.zoom_ui_controller);
          mHighQualityToggleButton = findViewById(R.id.high_quality_button);
@@ -1627,7 +1655,13 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
  
          // Use "seamless" animation for rotations as we fix the UI relative to the device.
          // "seamless" will make the transition invisible to the users.
-@@ -647,14 +745,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+         WindowManager.LayoutParams windowAttrs = getWindow().getAttributes();
+         windowAttrs.rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS;
++        windowAttrs.userActivityTimeout = SCREEN_TIMEOUT_MS;
+         getWindow().setAttributes(windowAttrs);
+ 
+         mAccessibilityManager = getSystemService(AccessibilityManager.class);
+@@ -647,14 +771,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          // reverse-landscape or from portrait to reverse-portrait.
          mRootView.setOnApplyWindowInsetsListener((view, inset) -> {
              runOnUiThread(this::setupMainLayout);
@@ -1644,7 +1678,7 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
      }
  
      private Drawable createFocusIndicatorDrawable() {
-@@ -683,10 +777,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -683,10 +803,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          return new BitmapDrawable(getResources(), bitmap);
      }
  
@@ -1657,12 +1691,13 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
          window.setDecorFitsSystemWindows(false);
          WindowInsetsController controller = window.getInsetsController();
          if (controller != null) {
-@@ -699,31 +792,31 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -699,33 +818,49 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
      @Override
      public void onResume() {
          super.onResume();
 -        hideSystemUiAndActionBar();
 +        hideSystemUi();
++        resetScreenOffTimer();
          // When the screen is turned off and turned back on, the SurfaceTexture is already
          // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
          // a camera and start preview from here (otherwise, we wait until the surface is ready in
@@ -1693,6 +1728,20 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
 +        super.onWindowFocusChanged(hasFocus);
 +        if (hasFocus) {
 +            hideSystemUi();
++            resetScreenOffTimer();
++        }
++    }
++
++    @Override
++    public void onUserInteraction() {
++        super.onUserInteraction();
++        resetScreenOffTimer();
++    }
++
++    private void resetScreenOffTimer() {
++        mMainHandler.removeCallbacks(mTurnScreenOff);
++        if (!mDestroyed && !isFinishing()) {
++            mMainHandler.postDelayed(mTurnScreenOff, SCREEN_TIMEOUT_MS);
 +        }
 +    }
 +
@@ -1703,18 +1752,22 @@ index 47f92daf67c3144b6267e80dcda29bebb540bbab..517ee6d2c26c42052668b6d7aea21f32
 +
      @Override
      public void onPause() {
++        mMainHandler.removeCallbacks(mTurnScreenOff);
          if (mWebcamController != null) {
-@@ -765,6 +858,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+             mWebcamController.removePreviewSurfaceTexture();
+             mWebcamController.setRotationUpdateListener(null);
+@@ -765,6 +900,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
  
      @Override
      public void onDestroy() {
 +        mDestroyed = true;
 +        mMainHandler.removeCallbacks(mStartAndBindWhenUnlocked);
 +        mMainHandler.removeCallbacks(mAttachServiceWhenReady);
++        mMainHandler.removeCallbacks(mTurnScreenOff);
          if (mAccessibilityManager != null) {
              mAccessibilityManager.removeAccessibilityServicesStateChangeListener(
                      mAccessibilityListener);
-@@ -772,10 +868,24 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -772,10 +911,24 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          if (mWebcamController != null) {
              mWebcamController.setOnDestroyedCallback(null);
          }
@@ -4110,10 +4163,10 @@ index b1343986a734bf17e021687732cb84a6bcf47703..1b8074c399becbd027791d0a2e0302af
  
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..19945a3e7b3ff17fe378ad06c8ab32ca66322462
+index 0000000000000000000000000000000000000000..ed08adfd7b053b26bfd486d8b5cbade266c24d4c
 --- /dev/null
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,342 @@
 +/*
 + * Copyright (C) 2026 CaCamOS
 + *
@@ -4174,6 +4227,87 @@ index 0000000000000000000000000000000000000000..19945a3e7b3ff17fe378ad06c8ab32ca
 +    }
 +    return -1;
 +}
++
++class HostStreamState {
++  public:
++    explicit HostStreamState(const char* controlName) : mControlName(controlName) {}
++
++    ~HostStreamState() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        closeLocked();
++    }
++
++    bool isActive() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        if (mFallbackActive) {
++            return true;
++        }
++        if (!ensureOpenLocked()) {
++            return false;
++        }
++
++        const int value = mixer_ctl_get_value(mControl, 0);
++        if (value < 0) {
++            closeLocked();
++            return false;
++        }
++        return value != 0;
++    }
++
++    void reset() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        closeLocked();
++        mFallbackActive = false;
++        mNextOpenAttempt = std::chrono::steady_clock::time_point::min();
++    }
++
++  private:
++    bool ensureOpenLocked() {
++        if (mMixer != nullptr) {
++            return true;
++        }
++
++        const auto now = std::chrono::steady_clock::now();
++        if (now < mNextOpenAttempt) {
++            return false;
++        }
++        mNextOpenAttempt = now + kOpenRetryDelay;
++
++        const int card = findUac2Card();
++        if (card < 0) {
++            return false;
++        }
++
++        mMixer = mixer_open(card);
++        if (mMixer == nullptr) {
++            return false;
++        }
++        mControl = mixer_get_ctl_by_name(mMixer, mControlName);
++        if (mControl == nullptr) {
++            ALOGW("UAC2 control '%s' is unavailable; keeping legacy always-on audio", mControlName);
++            closeLocked();
++            mFallbackActive = true;
++            return false;
++        }
++        return true;
++    }
++
++    void closeLocked() {
++        if (mMixer != nullptr) {
++            mixer_close(mMixer);
++        }
++        mMixer = nullptr;
++        mControl = nullptr;
++    }
++
++    const char* const mControlName;
++    std::mutex mMutex;
++    mixer* mMixer = nullptr;
++    mixer_ctl* mControl = nullptr;
++    bool mFallbackActive = false;
++    std::chrono::steady_clock::time_point mNextOpenAttempt =
++            std::chrono::steady_clock::time_point::min();
++};
 +
 +class PcmEndpoint {
 +  public:
@@ -4306,6 +4440,8 @@ index 0000000000000000000000000000000000000000..19945a3e7b3ff17fe378ad06c8ab32ca
 +// receives USB OUT and is rendered by the telephone speakers.
 +PcmEndpoint gMicrophoneToHost(false, 1, "microphone");
 +PcmEndpoint gHostToSpeakers(true, 2, "speakers");
++HostStreamState gMicrophoneHostState("USB Microphone Active");
++HostStreamState gSpeakersHostState("USB Speakers Active");
 +
 +int transferDirectBuffer(JNIEnv* env, jobject buffer, jint offset, jint length,
 +                         PcmEndpoint& endpoint) {
@@ -4327,9 +4463,27 @@ index 0000000000000000000000000000000000000000..19945a3e7b3ff17fe378ad06c8ab32ca
 +    return transferDirectBuffer(env, buffer, offset, length, gHostToSpeakers);
 +}
 +
++jboolean nativeIsMicrophoneActive(JNIEnv*, jclass) {
++    return gMicrophoneHostState.isActive() ? JNI_TRUE : JNI_FALSE;
++}
++
++jboolean nativeAreSpeakersActive(JNIEnv*, jclass) {
++    return gSpeakersHostState.isActive() ? JNI_TRUE : JNI_FALSE;
++}
++
++void nativeResetMicrophone(JNIEnv*, jclass) {
++    gMicrophoneToHost.reset();
++}
++
++void nativeResetSpeakers(JNIEnv*, jclass) {
++    gHostToSpeakers.reset();
++}
++
 +void nativeReset(JNIEnv*, jclass) {
 +    gMicrophoneToHost.reset();
 +    gHostToSpeakers.reset();
++    gMicrophoneHostState.reset();
++    gSpeakersHostState.reset();
 +}
 +
 +const JNINativeMethod kMethods[] = {
@@ -4337,6 +4491,12 @@ index 0000000000000000000000000000000000000000..19945a3e7b3ff17fe378ad06c8ab32ca
 +         reinterpret_cast<void*>(nativeWriteMicrophone)},
 +        {"nativeReadSpeakers", "(Ljava/nio/ByteBuffer;II)I",
 +         reinterpret_cast<void*>(nativeReadSpeakers)},
++        {"nativeIsMicrophoneActive", "()Z",
++         reinterpret_cast<void*>(nativeIsMicrophoneActive)},
++        {"nativeAreSpeakersActive", "()Z",
++         reinterpret_cast<void*>(nativeAreSpeakersActive)},
++        {"nativeResetMicrophone", "()V", reinterpret_cast<void*>(nativeResetMicrophone)},
++        {"nativeResetSpeakers", "()V", reinterpret_cast<void*>(nativeResetSpeakers)},
 +        {"nativeReset", "()V", reinterpret_cast<void*>(nativeReset)},
 +};
 +
@@ -5115,10 +5275,10 @@ index 15fd9f65d35857fb113eea9b6896f27fd9264c76..981c712dfc6f4ad8680bbb77b1faf55b
  
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593eb3d5b2a
+index 0000000000000000000000000000000000000000..bbfc342c6c5c7fec0c2b936394ccfd20412a7fb5
 --- /dev/null
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,387 @@
 +/*
 + * Copyright (C) 2026 CaCamOS
 + *
@@ -5162,6 +5322,7 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +  private static final int MICROPHONE_CHANNELS = 1;
 +  private static final int SPEAKER_CHANNELS = 2;
 +  private static final int RETRY_DELAY_MS = 1000;
++  private static final int HOST_STREAM_POLL_INTERVAL_MS = 250;
 +
 +  private final Context mContext;
 +  private final AtomicBoolean mRunning = new AtomicBoolean();
@@ -5215,6 +5376,11 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +    final ByteBuffer buffer = ByteBuffer.allocateDirect(chunkBytes).order(ByteOrder.nativeOrder());
 +
 +    while (mRunning.get()) {
++      if (!nativeIsMicrophoneActive()) {
++        sleepForHostStatePoll();
++        continue;
++      }
++
 +      AudioRecord record = createAudioRecord(chunkBytes);
 +      if (record == null) {
 +        sleepBeforeRetry();
@@ -5234,9 +5400,9 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +        if (record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
 +          throw new IllegalStateException("microphone did not enter recording state");
 +        }
-+        Log.i(TAG, "Telephone microphone capture active");
++        Log.i(TAG, "Telephone microphone capture active for USB host");
 +
-+        while (mRunning.get()) {
++        while (mRunning.get() && nativeIsMicrophoneActive()) {
 +          buffer.clear();
 +          int bytesRead = record.read(buffer, chunkBytes, AudioRecord.READ_BLOCKING);
 +          if (bytesRead <= 0) {
@@ -5267,8 +5433,9 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +            record.release();
 +          }
 +        }
++        nativeResetMicrophone();
 +      }
-+      sleepBeforeRetry();
++      sleepForHostStatePoll();
 +    }
 +  }
 +
@@ -5278,6 +5445,11 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +    final ByteBuffer buffer = ByteBuffer.allocateDirect(chunkBytes).order(ByteOrder.nativeOrder());
 +
 +    while (mRunning.get()) {
++      if (!nativeAreSpeakersActive()) {
++        sleepForHostStatePoll();
++        continue;
++      }
++
 +      AudioTrack track = createAudioTrack(chunkBytes);
 +      if (track == null) {
 +        sleepBeforeRetry();
@@ -5294,9 +5466,9 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +
 +      try {
 +        track.play();
-+        Log.i(TAG, "Telephone speaker playback active");
++        Log.i(TAG, "Telephone speaker playback active for USB host");
 +
-+        while (mRunning.get()) {
++        while (mRunning.get() && nativeAreSpeakersActive()) {
 +          buffer.clear();
 +          int bytesRead = nativeReadSpeakers(buffer, 0, chunkBytes);
 +          if (bytesRead <= 0) {
@@ -5328,8 +5500,9 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +            track.release();
 +          }
 +        }
++        nativeResetSpeakers();
 +      }
-+      sleepBeforeRetry();
++      sleepForHostStatePoll();
 +    }
 +  }
 +
@@ -5462,6 +5635,12 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +    }
 +  }
 +
++  private void sleepForHostStatePoll() {
++    if (mRunning.get()) {
++      SystemClock.sleep(HOST_STREAM_POLL_INTERVAL_MS);
++    }
++  }
++
 +  private static void joinQuietly(Thread thread) {
 +    if (thread == null) {
 +      return;
@@ -5476,6 +5655,14 @@ index 0000000000000000000000000000000000000000..5349a2f7c291001cd93bc4b4de752593
 +  private static native int nativeWriteMicrophone(ByteBuffer buffer, int offset, int length);
 +
 +  private static native int nativeReadSpeakers(ByteBuffer buffer, int offset, int length);
++
++  private static native boolean nativeIsMicrophoneActive();
++
++  private static native boolean nativeAreSpeakersActive();
++
++  private static native void nativeResetMicrophone();
++
++  private static native void nativeResetSpeakers();
 +
 +  private static native void nativeReset();
 +}

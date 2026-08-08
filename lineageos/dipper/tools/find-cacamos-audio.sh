@@ -3,6 +3,7 @@ set -euo pipefail
 
 vendor_id="${CACAMOS_USB_VENDOR_ID:-18d1}"
 product_id="${CACAMOS_USB_PRODUCT_ID:-4eef}"
+usb_serial="${CACAMOS_USB_SERIAL:-}"
 output_format="${1:-human}"
 
 fail() {
@@ -25,6 +26,10 @@ find_usb_parent() {
         if [[ -r "$path/idVendor" && -r "$path/idProduct" ]] &&
             [[ "$(tr '[:upper:]' '[:lower:]' < "$path/idVendor")" == "$vendor_id" ]] &&
             [[ "$(tr '[:upper:]' '[:lower:]' < "$path/idProduct")" == "$product_id" ]]; then
+            if [[ -n "$usb_serial" ]] &&
+                [[ ! -r "$path/serial" || "$(tr -d '\r\n' < "$path/serial")" != "$usb_serial" ]]; then
+                return 1
+            fi
             printf '%s\n' "$path"
             return 0
         fi
@@ -48,8 +53,10 @@ for card_path in "${sound_cards[@]}"; do
     matches+=("$card_index"$'\t'"$usb_path")
 done
 
+identity="${vendor_id}:${product_id}"
+[[ -z "$usb_serial" ]] || identity+=" serial $usb_serial"
 [[ "${#matches[@]}" -eq 1 ]] ||
-    fail "expected exactly one CaCamOS USB audio card for ${vendor_id}:${product_id}, found ${#matches[@]}"
+    fail "expected exactly one CaCamOS USB audio card for $identity, found ${#matches[@]}"
 
 IFS=$'\t' read -r card_index usb_path <<<"${matches[0]}"
 card_id="$(tr -d '\r\n' < "/proc/asound/card${card_index}/id")"

@@ -7,7 +7,7 @@ transport is required.
 
 ## Xiaomi Mi 10 Pro Release
 
-CaCamOS 1.2.0 adds the complete dedicated-OS port for the Xiaomi Mi 10 Pro
+CaCamOS 1.2.1 is the current dedicated-OS release for the Xiaomi Mi 10 Pro
 (`cmi`), based on LineageOS 23.2 / Android 16. It carries the same standard UVC
 webcam and bidirectional UAC2 audio design as the MI8 release, adapted to the
 Snapdragon 865 kernel and the newer Android source tree.
@@ -21,41 +21,42 @@ The MI10 Pro port includes:
 - standard USB microphone and speakers at 48 kHz;
 - authenticated wireless ADB while the physical cable stays dedicated to UVC
   and UAC2;
-- a reproducible fourteen-patch series and controlled ten-worker build profile.
+- recovery maintenance that remains usable when the optional `/cache`
+  partition is unavailable;
+- a reproducible fourteen-patch series and controlled six-worker build profile.
 
 **Clean-install requirement:** the first installation from LineageOS or a
 CaCamOS 0.x build must include **Format data / factory reset** in Lineage
 Recovery. Sideloading an OTA updates the OS but does not erase `/data`; skipping
 this step preserves old applications, accounts, credentials and notifications.
 
-Source acceptance is recorded in
-[`lineageos/cmi/V1_2_ACCEPTANCE.md`](lineageos/cmi/V1_2_ACCEPTANCE.md). The final
-OTA is installed and qualified on the physical MI10 Pro under Linux:
+The 1.2.1 OTA is built from the reproducible source series and passes the
+archive, payload, target-identity and whole-package-signature gates:
 
 ```text
-lineage-23.2-20260801-UNOFFICIAL-CACAMOS-1.2.0-cmi.zip
-size=1422445300
-sha256=6543738bfcc6ce4d9bce233677f8b68919cbf324e2843c42cb65f956d2abc649
-build_incremental=1785557872
+lineage-23.2-20260803-UNOFFICIAL-CACAMOS-1.2.1-cmi.zip
+size=1422040935
+sha256=7f82397716a3138699764ba072446977f45cdda893d9c4aa7419659268ccc003
+build_incremental=1785781560
 ```
 
 Download:
-<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.2.0>
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.2.1>
 
 ## Xiaomi Mi 8 Release
 
-CaCamOS 1.1.0 is the current dedicated webcam OS for the Xiaomi Mi 8
+CaCamOS 1.1.1 is the current dedicated webcam OS for the Xiaomi Mi 8
 (`dipper`), based on LineageOS 22.2:
 
 ```text
-lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
-size=1068470898
-sha256=26c95ecf7ba4886b55f64bfae298b9f799c91fc8a2ee25476abc8f936f4879ca
-build_incremental=1785352812
+lineage-22.2-20260803-UNOFFICIAL-CACAMOS-1.1.1-dipper.zip
+size=1068468998
+sha256=b7c4094cfacbd6c647d20e821764fd0421ce35f484f2d519632304a6be23c79a
+build_incremental=1785784819
 ```
 
 Download:
-<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.1.0>
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.1.1>
 
 The OS is deliberately narrow:
 
@@ -75,10 +76,23 @@ The advertised MJPEG modes are:
 | 1024x576 | 15, 30 FPS |
 | 1920x1080 | 15, 30 FPS |
 
-The 1.1.0 image keeps the standard-UVC and stability fixes qualified in 1.0.0
+The 1.1.x image keeps the standard-UVC and stability fixes qualified in 1.0.0
 and adds standard USB audio. The MI8 microphone appears as a mono 48 kHz,
 16-bit input. Its speakers appear as a stereo 48 kHz, 16-bit output. Video and
 both audio directions work simultaneously through one cable.
+
+Version 1.1.1 on the MI8 and version 1.2.1 on the MI10 Pro add an idle-energy
+policy. The preview explicitly puts the display to sleep after 30 seconds
+without interaction and a double tap wakes it again. The local preview is
+released while the display is off; an open host UVC stream continues normally,
+while an unused camera can become idle. Android microphone capture and speaker
+playback now start only while the host has opened the corresponding UAC2
+endpoint.
+
+The MI8 energy and regression qualification is recorded in
+[`lineageos/dipper/V1_1_1_ACCEPTANCE.md`](lineageos/dipper/V1_1_1_ACCEPTANCE.md).
+The matching MI10 Pro qualification is recorded in
+[`lineageos/cmi/V1_2_1_ACCEPTANCE.md`](lineageos/cmi/V1_2_1_ACCEPTANCE.md).
 
 Physical qualification on the MI8 includes:
 
@@ -113,13 +127,13 @@ sideload:
 MI10 Pro:
 
 ```bash
-adb sideload lineage-23.2-20260801-UNOFFICIAL-CACAMOS-1.2.0-cmi.zip
+adb sideload lineage-23.2-20260803-UNOFFICIAL-CACAMOS-1.2.1-cmi.zip
 ```
 
 MI8:
 
 ```bash
-adb sideload lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.1.0-dipper.zip
+adb sideload lineage-22.2-20260803-UNOFFICIAL-CACAMOS-1.1.1-dipper.zip
 ```
 
 After startup, connect the phone to Wi-Fi once for authenticated wireless ADB
@@ -160,25 +174,25 @@ For the MI10 Pro LineageOS 23.2 tree, use the device-specific series:
 ./lineageos/cmi/tools/verify-source-tree.sh /path/to/lineage-cmi
 ```
 
-On the current 16-core build host, the qualified resource-controlled build
-uses ten cores and reserves six:
+On the current 8-core build host, the resource-controlled build uses six
+cores and reserves two:
 
 ```bash
 ./lineageos/dipper/tools/build-lineage-gentle.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
   --target bacon \
   --existing-graph \
-  --jobs 10 \
-  --cpu-set 0-9 \
-  --reserve-cores 6 \
+  --jobs 6 \
+  --cpu-set 0-5 \
+  --reserve-cores 2 \
   --go-memlimit-mib 8192 \
-  --min-free-mem-mib 5120 \
+  --min-free-mem-mib 3584 \
   --min-free-swap-mib 32768
 ```
 
 The MI8 and MI10 Pro both have downloadable OTA releases. Version 1.2.0 also
-publishes the complete MI10 Pro source integration and its reproducibility and
-acceptance tooling.
+introduced the complete MI10 Pro source integration; versions 1.1.1 and 1.2.1
+add the shared idle-energy policy and its verification tooling.
 
 ## Host Check
 

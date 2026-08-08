@@ -121,6 +121,88 @@ index 909623dcd748..22293ec2eda2 100644
  	opts = fi_to_f_uvc_opts(fi);
  
  	mutex_lock(&opts->lock);
+diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_audio.c b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_audio.c
+index 52e832a1a9fb..b43b3958ad15 100644
+--- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_audio.c
++++ b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_audio.c
+@@ -13,6 +13,7 @@
+  */
+ 
+ #include <linux/module.h>
++#include <sound/control.h>
+ #include <sound/core.h>
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
+@@ -65,6 +66,50 @@ struct snd_uac_chip {
+ 	unsigned int p_framesize;
+ };
+ 
++enum uac_host_stream {
++	UAC_HOST_MICROPHONE,
++	UAC_HOST_SPEAKERS,
++};
++
++static int uac_host_stream_info(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_info *uinfo)
++{
++	uinfo->type = SNDRV_CTL_ELEM_TYPE_BOOLEAN;
++	uinfo->count = 1;
++	uinfo->value.integer.min = 0;
++	uinfo->value.integer.max = 1;
++	return 0;
++}
++
++static int uac_host_stream_get(struct snd_kcontrol *kcontrol,
++			       struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_uac_chip *uac = snd_kcontrol_chip(kcontrol);
++	struct uac_rtd_params *prm;
++
++	prm = kcontrol->private_value == UAC_HOST_MICROPHONE ?
++		&uac->p_prm : &uac->c_prm;
++	ucontrol->value.integer.value[0] = READ_ONCE(prm->ep_enabled);
++	return 0;
++}
++
++static const struct snd_kcontrol_new uac_host_stream_controls[] = {
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_PCM,
++		.name = "USB Microphone Active",
++		.info = uac_host_stream_info,
++		.get = uac_host_stream_get,
++		.private_value = UAC_HOST_MICROPHONE,
++	},
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_PCM,
++		.name = "USB Speakers Active",
++		.info = uac_host_stream_info,
++		.get = uac_host_stream_get,
++		.private_value = UAC_HOST_SPEAKERS,
++	},
++};
++
+ static const struct snd_pcm_hardware uac_pcm_hardware = {
+ 	.info = SNDRV_PCM_INFO_INTERLEAVED | SNDRV_PCM_INFO_BLOCK_TRANSFER
+ 		 | SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_MMAP_VALID
+@@ -601,6 +646,18 @@ int g_audio_setup(struct g_audio *g_audio, const char *pcm_name,
+ 
+ 	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_CONTINUOUS,
+ 		snd_dma_continuous_data(GFP_KERNEL), 0, BUFF_SIZE_MAX);
++	if (p_chmask) {
++		err = snd_ctl_add(card, snd_ctl_new1(
++			&uac_host_stream_controls[UAC_HOST_MICROPHONE], uac));
++		if (err < 0)
++			goto snd_fail;
++	}
++	if (c_chmask) {
++		err = snd_ctl_add(card, snd_ctl_new1(
++			&uac_host_stream_controls[UAC_HOST_SPEAKERS], uac));
++		if (err < 0)
++			goto snd_fail;
++	}
+ 
+ 	err = snd_card_register(card);
+ 
 diff --git a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_uac2.h b/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_uac2.h
 index 6a561cf39d98..cb663b18fb0a 100644
 --- a/kernel/xiaomi/sm8250/drivers/usb/gadget/function/u_uac2.h

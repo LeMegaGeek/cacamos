@@ -11,15 +11,19 @@ not involved.
 - Codename: `cmi`
 - Platform: Qualcomm Snapdragon 865 / `sm8250`
 - Base: LineageOS 23.2 / Android 16
-- CaCamOS release: `1.2.0`
+- CaCamOS release: `1.2.1`
 
 Qualified OTA:
 
 ```text
-lineage-23.2-20260801-UNOFFICIAL-CACAMOS-1.2.0-cmi.zip
-size=1422445300
-sha256=6543738bfcc6ce4d9bce233677f8b68919cbf324e2843c42cb65f956d2abc649
+lineage-23.2-20260803-UNOFFICIAL-CACAMOS-1.2.1-cmi.zip
+size=1422040935
+sha256=7f82397716a3138699764ba072446977f45cdda893d9c4aa7419659268ccc003
+build_incremental=1785781560
 ```
+
+The physical energy, touch-wake, video and audio qualification is recorded in
+[`V1_2_1_ACCEPTANCE.md`](V1_2_1_ACCEPTANCE.md).
 
 The kernel already enables the required gadget functions:
 
@@ -38,7 +42,12 @@ USB audio descriptors and Android appliance behavior qualified on the MI8.
 - UVC video and UAC2 audio own the physical USB cable.
 - Authenticated ADB maintenance remains available over Wi-Fi.
 - Settings contains a direct return-to-webcam action.
-- Recovery enables ADB for appliance maintenance.
+- Recovery enables ADB for appliance maintenance and continues sideloading
+  when the optional `/cache` partition cannot be mounted.
+- The preview explicitly puts the display to sleep after 30 seconds; a double
+  tap wakes it again.
+- The local preview and unused Android audio paths become idle while host UVC
+  or UAC2 streams are closed.
 
 The advertised video modes are MJPEG 1280x720, 1024x576 and 1920x1080 at 15
 and 30 FPS. The regular front-camera Camera2 path tops out at 30 FPS; the
@@ -72,18 +81,19 @@ they reproduce the current worktrees and that all appliance invariants hold:
 
 ## Controlled Build
 
-The qualified 16-core host profile uses ten workers and leaves six cores free:
+The current 8-core host profile uses six workers and leaves two cores free:
 
 ```bash
 ./lineageos/cmi/tools/build-lineage-gentle.sh \
   --lineage-root /path/to/lineage-cmi \
   --target bacon \
-  --jobs 10 \
-  --cpu-set 0-9 \
-  --reserve-cores 6 \
-  --go-memlimit-mib 18432 \
-  --min-free-mem-mib 2048 \
-  --min-free-swap-mib 16384
+  --existing-graph \
+  --jobs 6 \
+  --cpu-set 0-5 \
+  --reserve-cores 2 \
+  --go-memlimit-mib 8192 \
+  --min-free-mem-mib 3584 \
+  --min-free-swap-mib 32768
 ```
 
 The wrapper performs memory and swap preflight checks, caps CPU affinity and
@@ -111,8 +121,8 @@ aplay -l
 
 Windows, Teams, OBS and browsers select CaCamOS through their normal camera and
 audio device menus. Physical Linux qualification on the MI10 Pro passed for
-video, microphone, speaker, reboot and host USB reset recovery. A physical
-Windows test on this MI10 Pro remains to be recorded.
+display sleep and touch wake, video, microphone, speaker, reboot and rapid UVC
+reopen. A physical Windows test on this MI10 Pro remains to be recorded.
 
 ## Reproducibility
 

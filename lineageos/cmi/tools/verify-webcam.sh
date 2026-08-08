@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 adb_bin="${ADB:-adb}"
 adb_serial="${ADB_SERIAL:-}"
-expected_version="${EXPECTED_CACAMOS_VERSION:-1.2.0}"
+release_version="$(tr -d '\r\n' < "$script_dir/../VERSION")"
+expected_version="${EXPECTED_CACAMOS_VERSION:-$release_version}"
 failures=0
 
 pass() { printf 'PASS: %s\n' "$*"; }
@@ -46,6 +48,8 @@ usb_dump="$(adb_shell dumpsys usb)"
 kernel_config="$(adb_shell 'zcat /proc/config.gz 2>/dev/null')"
 system_packages="$(adb_shell pm list packages -s)"
 third_party_packages="$(adb_shell pm list packages -3 | sed '/^[[:space:]]*$/d')"
+double_tap_to_wake="$(adb_shell settings get secure double_tap_to_wake)"
+power_dump="$(adb_shell dumpsys power)"
 
 printf 'CaCamOS MI10 Pro runtime check\n'
 printf 'adb_target=%s\n' "$adb_serial"
@@ -72,6 +76,19 @@ printf 'model=%s\nbrand=%s\ndevice=%s\nversion=%s\n' \
     fail "DeviceAsWebcam process is not alive"
 [[ "$lockscreen_disabled" == "true" ]] && pass "lock screen is disabled" ||
     fail "lock screen remains enabled"
+[[ "$double_tap_to_wake" == "1" ]] && pass "touch wake is enabled" ||
+    fail "double_tap_to_wake=${double_tap_to_wake:-unset}"
+grep -Fq 'mDoubleTapWakeEnabled=true' <<<"$power_dump" &&
+    pass "the power HAL has enabled double-tap touch wake" ||
+    fail "the power HAL has not enabled double-tap touch wake"
+if grep -Fq 'mUserActivityTimeoutOverrideFromWindowManager=30000' \
+    <<<"$power_dump"; then
+    pass "webcam screen timeout is 30 seconds"
+elif grep -Eq 'mWakefulness=(Asleep|Dozing)' <<<"$power_dump"; then
+    pass "webcam display is already asleep after its timeout"
+else
+    fail "webcam screen timeout override is not 30 seconds"
+fi
 grep -Fq 'com.android.DeviceAsWebcam/com.android.deviceaswebcam.DeviceAsWebcamPreview' \
     <<<"$home_activity" && pass "webcam preview is the HOME activity" ||
     fail "webcam preview is not the HOME activity"
@@ -133,4 +150,4 @@ if (( failures > 0 )); then
     exit 1
 fi
 
-printf '\nPASS: CaCamOS 1.2.0 runtime invariants are present on cmi.\n'
+printf '\nPASS: CaCamOS %s runtime invariants are present on cmi.\n' "$expected_version"

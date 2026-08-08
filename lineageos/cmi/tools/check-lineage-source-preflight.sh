@@ -32,6 +32,7 @@ lineage_root="${1:-}"
 [[ -n "$lineage_root" ]] || { usage; exit 2; }
 lineage_root="$(cd "$lineage_root" && pwd)"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cacamos_version="$(tr -d '\r\n' < "$script_dir/../VERSION")"
 
 required_projects=(
     device/xiaomi/cmi
@@ -74,4 +75,5 @@ else
     "$script_dir/verify-patch-series.sh" "$lineage_root"
 fi
 
-printf '\nPASS: cmi workspace is ready for the CaCamOS 1.2.0 source integration.\n'
+printf '\nPASS: cmi workspace is ready for the CaCamOS %s source integration.\n' \
+    "$cacamos_version"

@@ -772,6 +772,7 @@ expected = {
     "android.permission.FOREGROUND_SERVICE_MICROPHONE",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.WRITE_SECURE_SETTINGS",
+    "android.permission.DEVICE_POWER",
 }
 if requested != expected:
     raise SystemExit(
@@ -893,8 +894,14 @@ require_fixed "$webcam_audio_bridge" "TYPE_BUILTIN_MIC" \
     "the bridge does not prefer the telephone microphone"
 require_fixed "$webcam_audio_bridge" "TYPE_BUILTIN_SPEAKER" \
     "the bridge does not prefer the telephone speaker"
+require_fixed "$webcam_audio_bridge" "nativeIsMicrophoneActive()" \
+    "the telephone microphone runs even when the host stream is closed"
+require_fixed "$webcam_audio_bridge" "nativeAreSpeakersActive()" \
+    "the telephone speaker runs even when the host stream is closed"
 require_fixed "$webcam_audio_native" 'trimmedId == "UAC2Gadget"' \
     "the native bridge cannot discover the sanitized UAC2 ALSA card ID"
+require_fixed "$webcam_audio_native" "mixer_get_ctl_by_name" \
+    "the native bridge cannot read host UAC2 stream activity"
 require_fixed "$webcam_audio_native" "O_NONBLOCK" \
     "UAC2 device loss can block the persistent webcam service"
 require_fixed "$webcam_audio_native" "POLLERR | POLLHUP | POLLNVAL" \
@@ -942,8 +949,24 @@ if "getWebcamController(" in service[start:end]:
 if "Thread.sleep" in service[start:end]:
     raise SystemExit("onStartCommand still waits on the main thread")
 PY
-require_fixed "$webcam_preview" "FLAG_KEEP_SCREEN_ON" \
-    "webcam preview does not keep the appliance screen awake"
+forbid_fixed "$webcam_preview" "FLAG_KEEP_SCREEN_ON" \
+    "webcam preview still forces the appliance screen awake"
+forbid_fixed "$webcam_preview" "setTurnScreenOn(true)" \
+    "webcam preview still wakes the display automatically"
+require_fixed "$webcam_preview" \
+    "windowAttrs.userActivityTimeout = SCREEN_TIMEOUT_MS" \
+    "webcam preview does not apply its energy-saving screen timeout"
+require_fixed "$webcam_manifest" "android.permission.DEVICE_POWER" \
+    "webcam preview cannot force the display to sleep"
+require_fixed "$webcam_preview" "mPowerManager.goToSleep(" \
+    "webcam preview does not force display sleep after inactivity"
+require_fixed "$webcam_preview" "public void onUserInteraction()" \
+    "webcam preview does not reset its timeout after touch input"
+require_fixed "$webcam_preview" \
+    "postDelayed(mTurnScreenOff, SCREEN_TIMEOUT_MS)" \
+    "webcam preview does not arm its explicit display timeout"
+require_fixed "$webcam_preview" "Settings.Secure.DOUBLE_TAP_TO_WAKE" \
+    "webcam preview does not enable touch wake"
 require_fixed "$webcam_preview" "startForegroundService(serviceIntent)" \
     "the HOME activity does not explicitly start the webcam service"
 require_fixed "$webcam_preview" "Context.BIND_AUTO_CREATE" \
@@ -1409,6 +1432,10 @@ require_fixed "$kernel_uac2_function" '"CaCamOS Microphone"' \
     "the UAC2 microphone does not carry the CaCamOS identity"
 require_fixed "$kernel_uac2_function" '"CaCamOS Speakers"' \
     "the UAC2 speakers do not carry the CaCamOS identity"
+require_fixed "$kernel_uac2_function" '"USB Microphone Active"' \
+    "the UAC2 gadget does not expose host microphone activity"
+require_fixed "$kernel_uac2_function" '"USB Speakers Active"' \
+    "the UAC2 gadget does not expose host speaker activity"
 if [[ "$(grep -Fc \
     'USB_ENDPOINT_XFER_ISOC | USB_ENDPOINT_SYNC_ADAPTIVE' \
     "$kernel_uac2_function")" -lt 2 ]]; then

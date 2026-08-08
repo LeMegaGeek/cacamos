@@ -1,6 +1,6 @@
 # Current MI10 Pro Source Status
 
-Date: 2026-07-31
+Date: 2026-08-08
 
 Workspace:
 
@@ -11,14 +11,19 @@ Workspace:
 ## Result
 
 - Full LineageOS 23.2 / Android 16 `cmi` workspace synchronized.
-- Dedicated CaCamOS version: `1.2.0`.
+- Dedicated CaCamOS version: `1.2.1`.
 - Fourteen-project source port complete.
 - Exact-base patch verification passes for every project.
 - Applying the published patches recreates every audited worktree exactly.
 - The complete CaCamOS source invariant verifier passes.
-- Product configuration reaches the Android Ninja build graph with the
-  controlled ten-worker profile.
-- Physical installation and Windows/Linux runtime qualification remain pending.
+- The signed 1.2.1 OTA passes source, payload, identity, archive and signature
+  verification under the controlled six-worker profile.
+- Recovery maintenance ADB is enabled for appliance builds, and a failed mount
+  of optional `/cache` no longer aborts ADB sideload before reading the OTA.
+- Physical idle-energy and touch-wake qualification passed on the MI10 Pro.
+  The display slept after 30 seconds, idle camera and audio activity stopped,
+  an active 2,400-frame UVC stream survived display sleep, and a physical
+  double-tap restored the webcam interface.
 
 ## Published Source Areas
 

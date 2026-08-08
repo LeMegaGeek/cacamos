@@ -115,8 +115,10 @@ record_audio_permission="$(
 system_packages="$(adb_shell pm list packages -s)"
 webcam_pid="$(adb_shell pidof com.android.DeviceAsWebcam)"
 lockscreen_disabled="$(adb_shell locksettings get-disabled)"
+double_tap_to_wake="$(adb_shell settings get secure double_tap_to_wake)"
 trust_dump="$(adb_shell dumpsys trust)"
 usb_dump="$(adb_shell dumpsys usb)"
+power_dump="$(adb_shell dumpsys power)"
 activity_dump="$(adb_shell dumpsys activity activities)"
 policy_dump="$(adb_shell dumpsys window policy)"
 home_activity="$(
@@ -149,6 +151,7 @@ printf 'persist.adb.tcp.port=%s\n' "${persist_adb_tcp_port:-unset}"
 printf 'config_adbWifiAutoEnable=%s\n' "$adb_wifi_auto_enabled"
 printf 'webcam_pid=%s\n' "$webcam_pid"
 printf 'lockscreen_disabled=%s\n' "$lockscreen_disabled"
+printf 'double_tap_to_wake=%s\n' "$double_tap_to_wake"
 printf 'device_provisioned=%s\n' "$device_provisioned"
 printf 'user_setup_complete=%s\n' "$user_setup_complete"
 printf 'development_settings_enabled=%s\n' "$development_settings_enabled"
@@ -309,6 +312,17 @@ if grep -Fq 'secure=true' <<<"$policy_dump"; then
 else
     pass "KeyguardService reports no secure lock"
 fi
+
+[[ "$double_tap_to_wake" == "1" ]] &&
+    pass "double-tap touch wake is enabled" ||
+    fail "double_tap_to_wake is ${double_tap_to_wake:-unset}"
+grep -Fq 'mDoubleTapWakeEnabled=true' <<<"$power_dump" &&
+    pass "the power HAL has enabled double-tap touch wake" ||
+    fail "the power HAL has not enabled double-tap touch wake"
+grep -Fq 'mUserActivityTimeoutOverrideFromWindowManager=30000' \
+    <<<"$power_dump" &&
+    pass "the webcam display timeout is 30 seconds" ||
+    fail "the webcam display timeout override is not 30 seconds"
 
 if grep -Fq 'com.android.DeviceAsWebcam' <<<"$crash_dump"; then
     fail "the crash buffer contains a DeviceAsWebcam crash"

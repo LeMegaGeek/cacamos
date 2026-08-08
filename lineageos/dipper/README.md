@@ -13,11 +13,13 @@ without network streaming.
 - Codename: `dipper`
 - Platform: Qualcomm `sdm845`
 - LineageOS branch checked: `lineage-22.2`
-- CaCamOS release: `1.0.0` dedicated webcam OS
-- Previous release: `0.7.0`, ROM R13
+- CaCamOS release: `1.1.1` dedicated webcam OS
+- Previous release: `1.1.0`
 
-The exact 1.0.0 artifact and physical qualification evidence are recorded in
-[`V1_ACCEPTANCE.md`](V1_ACCEPTANCE.md).
+The complete 1.1.0 USB qualification evidence is recorded in
+[`V1_1_ACCEPTANCE.md`](V1_1_ACCEPTANCE.md). The physical display, touch-wake,
+camera-idle and on-demand-audio qualification for version 1.1.1 is recorded in
+[`V1_1_1_ACCEPTANCE.md`](V1_1_1_ACCEPTANCE.md).
 
 ## Important Difference From Mi 10 Pro
 
@@ -76,19 +78,19 @@ Verify the source tree before building:
 
 Then build with the resource-controlled wrapper. It applies CPU affinity,
 memory and swap preflight checks, a Go memory limit, and a runtime watchdog.
-The qualified 16-core host configuration uses ten build workers and reserves
-six cores:
+The current 8-core host configuration uses six build workers and reserves
+two cores:
 
 ```bash
 /path/to/cacamos/lineageos/dipper/tools/build-lineage-gentle.sh \
   --lineage-root /home/denis/Documents/Denis/dev/lineage-dipper \
   --target bacon \
   --existing-graph \
-  --jobs 10 \
-  --cpu-set 0-9 \
-  --reserve-cores 6 \
+  --jobs 6 \
+  --cpu-set 0-5 \
+  --reserve-cores 2 \
   --go-memlimit-mib 8192 \
-  --min-free-mem-mib 5120 \
+  --min-free-mem-mib 3584 \
   --min-free-swap-mib 32768
 ```
 
@@ -102,18 +104,22 @@ mka bacon
 
 ## Qualified OTA
 
-CaCamOS 1.0.0 ships the exact dedicated MI8 OTA qualified on the physical
-device:
+CaCamOS 1.1.1 ships this exact signed MI8 OTA:
 
 ```text
-lineage-22.2-20260729-UNOFFICIAL-CACAMOS-1.0.0-dipper.zip
-size=1068308344
-sha256=7ff904f2bd95bda315266ab7c40b5d1fa2c2a6a354c53c15ae0393761360e1ea
-build_incremental=1785337449
+lineage-22.2-20260803-UNOFFICIAL-CACAMOS-1.1.1-dipper.zip
+size=1068468998
+sha256=b7c4094cfacbd6c647d20e821764fd0421ce35f484f2d519632304a6be23c79a
+build_incremental=1785784819
 ```
 
 Download:
-<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.0.0>
+<https://github.com/LeMegaGeek/cacamos/releases/tag/v1.1.1>
+
+After 30 seconds without interaction, the preview explicitly puts the display
+to sleep and releases its local surface. Double-tap-to-wake remains enabled.
+An open host UVC stream continues with the display off, and Android audio
+capture/playback is created only while the matching host UAC2 endpoint is open.
 
 ## Runtime Validation
 
@@ -142,7 +148,7 @@ function, lock state, wireless ADB, advertised modes, repeated raw JPEG
 integrity and one sustained stream:
 
 ```bash
-EXPECTED_BUILD_INCREMENTAL=1785337449 ADB_SERIAL=<wireless-ip:port> \
+EXPECTED_BUILD_INCREMENTAL=1785784819 ADB_SERIAL=<wireless-ip:port> \
   ./lineageos/dipper/tools/qualify-runtime.sh
 ```
 
@@ -177,7 +183,7 @@ Chromium/WebRTC, GStreamer and VLC without BGOBS. The final OBS run captured
 252 frames over 8.5 seconds at exactly 30 FPS.
 
 The supported modes are MJPEG 1280x720, 1024x576 and 1920x1080 at 15 and
-30 FPS. The 1.0.0 warmup frame satisfies OBS's short initial-frame deadline,
+30 FPS. The warmup frame satisfies OBS's short initial-frame deadline,
 and the periodic control-event drain preserves rapid close/reopen operation.
 
 Do not use `svc usb resetUsbGadget` for diagnostics on the MI8. It can panic

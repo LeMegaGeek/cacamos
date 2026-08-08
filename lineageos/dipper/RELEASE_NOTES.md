@@ -2,6 +2,30 @@
 
 Xiaomi Mi 8 (`dipper`) LineageOS integration for standard USB webcam mode.
 
+## 1.1.1
+
+- Explicitly puts the display to sleep after 30 seconds without interaction,
+  including when Android's ordinary window timeout is held awake elsewhere.
+- Keeps double-tap-to-wake enabled so the webcam interface can be restored
+  without using a physical button.
+- Releases the local camera preview while the display is off. An open host UVC
+  stream remains active; with no host stream, the camera can become idle too.
+- Exposes the two host UAC2 stream states through read-only ALSA controls.
+- Starts Android microphone capture and speaker playback only while the host
+  has opened the corresponding USB endpoint. This removes the permanent
+  `AudioIn` wake lock present in 1.1.0 while the microphone is unused.
+- Keeps the standard UVC/UAC2 identity, resolutions, frame rates and audio
+  formats from 1.1.0 unchanged.
+
+Signed OTA:
+
+```text
+lineage-22.2-20260803-UNOFFICIAL-CACAMOS-1.1.1-dipper.zip
+size=1068468998
+sha256=b7c4094cfacbd6c647d20e821764fd0421ce35f484f2d519632304a6be23c79a
+build_incremental=1785784819
+```
+
 ## 1.1.0
 
 - Enables the MI8 kernel UAC2 gadget and binds it with UVC as one composite USB

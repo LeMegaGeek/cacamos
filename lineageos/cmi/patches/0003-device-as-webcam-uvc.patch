@@ -1,8 +1,8 @@
 diff --git a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-index 9e6989c..1fb265c 100644
+index 9e6989cb846336da80e1d6dd7dc26fa2414cae35..4611c36d7ff6fb92bf61fc4d774f3be6a1cb462a 100644
 --- a/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
 +++ b/packages/services/DeviceAsWebcam/impl/AndroidManifest.xml
-@@ -9,31 +9,51 @@
+@@ -9,31 +9,52 @@
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
      <uses-permission android:name="android.permission.CAMERA"/>
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
@@ -10,6 +10,7 @@ index 9e6989c..1fb265c 100644
 +    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 +    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 +    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
++    <uses-permission android:name="android.permission.DEVICE_POWER"/>
  
      <application
 -         android:label="@string/app_label">
@@ -58,7 +59,7 @@ index 9e6989c..1fb265c 100644
  </manifest>
 diff --git a/packages/services/DeviceAsWebcam/impl/res/drawable/ic_settings.xml b/packages/services/DeviceAsWebcam/impl/res/drawable/ic_settings.xml
 new file mode 100644
-index 0000000..b01b5a0
+index 0000000000000000000000000000000000000000..b01b5a0aa9ed025e9319798a953cc6ead2b5f33b
 --- /dev/null
 +++ b/packages/services/DeviceAsWebcam/impl/res/drawable/ic_settings.xml
 @@ -0,0 +1,11 @@
@@ -74,7 +75,7 @@ index 0000000..b01b5a0
 +        android:pathData="M19.43,12.98c0.04,-0.32 0.07,-0.65 0.07,-0.98s-0.03,-0.66 -0.07,-0.98l2.11,-1.65c0.19,-0.15 0.24,-0.42 0.12,-0.64l-2,-3.46c-0.12,-0.22 -0.37,-0.31 -0.6,-0.22l-2.49,1c-0.52,-0.4 -1.08,-0.73 -1.69,-0.98L14.5,2.42C14.47,2.18 14.25,2 14,2h-4c-0.25,0 -0.46,0.18 -0.5,0.42L9.12,5.07c-0.61,0.25 -1.17,0.59 -1.69,0.98l-2.49,-1c-0.23,-0.08 -0.48,0 -0.6,0.22l-2,3.46c-0.13,0.22 -0.07,0.49 0.12,0.64l2.11,1.65C4.53,11.34 4.5,11.67 4.5,12s0.03,0.66 0.07,0.98l-2.11,1.65c-0.19,0.15 -0.24,0.42 -0.12,0.64l2,3.46c0.12,0.22 0.37,0.31 0.6,0.22l2.49,-1c0.52,0.4 1.08,0.73 1.69,0.98l0.38,2.65c0.04,0.24 0.25,0.42 0.5,0.42h4c0.25,0 0.46,-0.18 0.5,-0.42l0.38,-2.65c0.61,-0.25 1.17,-0.58 1.69,-0.98l2.49,1c0.23,0.08 0.48,0 0.6,-0.22l2,-3.46c0.12,-0.22 0.07,-0.49 -0.12,-0.64L19.43,12.98zM12,15.5A3.5,3.5 0,1 1,12,8a3.5,3.5 0,0 1,0,7.5z" />
 +</vector>
 diff --git a/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml b/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml
-index 0d817e3..5f609ad 100644
+index 0d817e3c57812ec7ef3ec282bc2567106096a35a..5f609ad8d5eaeb0433cb5e02d52b34879ee0415b 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/layout/preview_layout.xml
 @@ -65,6 +65,19 @@
@@ -98,7 +99,7 @@ index 0d817e3..5f609ad 100644
      </FrameLayout>
  
 diff --git a/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml b/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml
-index 5e1af11..ec1eb07 100644
+index 5e1af11ec26161705b1805f1784be0b106fc3ab6..ec1eb075ffa3c21577c2f38ae1d8237cbfffad97 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/values-fr/strings.xml
 @@ -16,7 +16,7 @@
@@ -119,7 +120,7 @@ index 5e1af11..ec1eb07 100644
      <string name="hq_warning_dialog_content_1" msgid="4522581741851657138">"Le mode Haute qualité désactive les optimisations d\'énergie pour améliorer la qualité de la webcam. L\'utilisation de ce mode peut entraîner une consommation d\'énergie importante qui peut faire chauffer l\'appareil."</string>
      <string name="hq_warning_dialog_content_2" msgid="3916465225973908142"><b><u>"AVERTISSEMENT"</u></b>" : une utilisation prolongée à des températures élevées peut avoir des conséquences négatives sur l\'état de la batterie de cet appareil à long terme."</string>
 diff --git a/packages/services/DeviceAsWebcam/impl/res/values/strings.xml b/packages/services/DeviceAsWebcam/impl/res/values/strings.xml
-index 1b1425b..2567191 100644
+index 1b1425b3130bfac0791a8ab78d58aa825219769e..2567191e45d306857da365b3e9076b008a373e4e 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/values/strings.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/values/strings.xml
 @@ -16,7 +16,7 @@
@@ -140,7 +141,7 @@ index 1b1425b..2567191 100644
      <string name="hq_warning_dialog_title">High Quality Mode</string>
      <string name="hq_warning_dialog_content_1">High Quality Mode disables power optimizations to improve webcam quality. Using this mode may cause significant power draw which can heat up the device.</string>
 diff --git a/packages/services/DeviceAsWebcam/impl/res/values/themes.xml b/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
-index 3a1b81e..ce14eb8 100644
+index 3a1b81eb6e64a02258025e5a05fc2121a44ff005..ce14eb8821a79641495381e931249d5732812a83 100644
 --- a/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
 +++ b/packages/services/DeviceAsWebcam/impl/res/values/themes.xml
 @@ -18,9 +18,9 @@
@@ -158,7 +159,7 @@ index 3a1b81e..ce14eb8 100644
 \ No newline at end of file
 +</resources>
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
-index 622d983..c2fe81c 100644
+index 622d9833c7e8d5305bf32d183510a81f0f17ac4c..c2fe81cdd12565b1ce720b1ae526b4c1429aefa5 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/CameraController.java
 @@ -64,10 +64,13 @@ import java.util.ArrayList;
@@ -1309,7 +1310,7 @@ index 622d983..c2fe81c 100644
                  if (mCameraDevice == null || mCaptureSession == null) {
                      return;
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt
-index b9c4d63..6bd63b0 100644
+index b9c4d63c07ee8ad3b827aee48e6079eb4c14401f..6bd63b0758d0b6f60f1ca5835f42e8e6da2522c6 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamFgServiceImpl.kt
 @@ -30,9 +30,7 @@ class DeviceAsWebcamFgServiceImpl : DeviceAsWebcamFgService() {
@@ -1324,7 +1325,7 @@ index b9c4d63..6bd63b0 100644
      }
  
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
-index 4e57a80..90e14dd 100644
+index 4e57a8069c2f67e6ffb846f0230485625826bd55..91305ff245e07e54282e52c848e2eb0d792cbb3a 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/DeviceAsWebcamPreview.java
 @@ -23,6 +23,7 @@ import android.animation.ObjectAnimator;
@@ -1335,13 +1336,15 @@ index 4e57a80..90e14dd 100644
  import android.content.Intent;
  import android.content.ServiceConnection;
  import android.content.res.Configuration;
-@@ -39,14 +40,17 @@ import android.hardware.camera2.CameraCharacteristics;
+@@ -39,14 +40,19 @@ import android.hardware.camera2.CameraCharacteristics;
  import android.hardware.camera2.CameraMetadata;
  import android.os.Bundle;
  import android.os.ConditionVariable;
 +import android.os.Handler;
  import android.os.IBinder;
 +import android.os.Looper;
++import android.os.PowerManager;
++import android.os.SystemClock;
 +import android.os.UserManager;
 +import android.provider.Settings;
  import android.util.Log;
@@ -1354,7 +1357,7 @@ index 4e57a80..90e14dd 100644
  import android.view.KeyEvent;
  import android.view.MotionEvent;
  import android.view.Surface;
-@@ -78,21 +82,21 @@ import com.android.deviceaswebcam.view.ZoomController;
+@@ -78,21 +84,23 @@ import com.android.deviceaswebcam.view.ZoomController;
  
  import java.util.List;
  import java.util.Objects;
@@ -1370,6 +1373,7 @@ index 4e57a80..90e14dd 100644
 -    private final Executor mThreadExecutor = Executors.newFixedThreadPool(2);
 -    private final ConditionVariable mWebcamControllerReady = new ConditionVariable();
 +    private static final long SERVICE_RETRY_INTERVAL_MS = 250;
++    private static final long SCREEN_TIMEOUT_MS = 30_000;
  
      private boolean mTextureViewSetup = false;
 +    private boolean mServiceBound = false;
@@ -1378,10 +1382,11 @@ index 4e57a80..90e14dd 100644
      private WebcamControllerImpl mWebcamController;
 +    private DeviceAsWebcamFgServiceImpl mWebcamService;
 +    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
++    private PowerManager mPowerManager;
      private AccessibilityManager mAccessibilityManager;
      private int mCurrRotation = Surface.ROTATION_0;
      private Size mCurrDisplaySize = new Size(0, 0);
-@@ -104,9 +108,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -104,9 +112,26 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
      private View mFocusIndicator;
      private ZoomController mZoomController = null;
      private ImageButton mToggleCameraButton;
@@ -1390,10 +1395,26 @@ index 4e57a80..90e14dd 100644
      private CameraPickerDialog mCameraPickerDialog;
  
 -    private ImageButton mHighQualityToggleButton;
++    private final Runnable mTurnScreenOff =
++            () -> {
++                if (mDestroyed || isFinishing() || mPowerManager == null) {
++                    return;
++                }
++                try {
++                    BootDiagnostics.record("preview-screen-timeout");
++                    mPowerManager.goToSleep(
++                            SystemClock.uptimeMillis(),
++                            PowerManager.GO_TO_SLEEP_REASON_TIMEOUT,
++                            0);
++                } catch (RuntimeException e) {
++                    BootDiagnostics.recordException("preview-screen-timeout-failed", e);
++                }
++            };
++
      private boolean mIsWaitingOnHQToggle = false; // Read/Write on main thread only.
  
      private UserPrefs mUserPrefs;
-@@ -170,51 +175,7 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -170,51 +195,7 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
                                              TAG,
                                              "onSurfaceTextureAvailable " + width + " x " + height);
                                  }
@@ -1446,7 +1467,7 @@ index 4e57a80..90e14dd 100644
                              });
                  }
  
-@@ -245,28 +206,112 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -245,28 +226,112 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
              new ServiceConnection() {
                  @Override
                  public void onServiceConnected(ComponentName className, IBinder serviceBinder) {
@@ -1568,7 +1589,7 @@ index 4e57a80..90e14dd 100644
              };
  
      private MotionEventToZoomRatioConverter mMotionEventToZoomRatioConverter = null;
-@@ -322,6 +367,47 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -322,6 +387,47 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          mTextureViewCard.setLayoutParams(cardLayoutParams);
      }
  
@@ -1616,7 +1637,7 @@ index 4e57a80..90e14dd 100644
      @Override
      public void onConfigurationChanged(@NonNull Configuration newConfig) {
          super.onConfigurationChanged(newConfig);
-@@ -605,25 +691,23 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -605,25 +711,23 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
                      .setDuration(animationDuration);
              anim.setInterpolator(new AccelerateDecelerateInterpolator());
              anim.start();
@@ -1648,7 +1669,7 @@ index 4e57a80..90e14dd 100644
          }
  
          // Rotation angle of the view must be [-179, 180] to ensure we always rotate the
-@@ -645,18 +729,29 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -645,18 +749,34 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          runOnUiThread(
                  () -> {
                      try {
@@ -1675,12 +1696,17 @@ index 4e57a80..90e14dd 100644
 +        BootDiagnostics.install();
 +        BootDiagnostics.record("preview-created");
 +        mDestroyed = false;
-+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-+        setTurnScreenOn(true);
++        mPowerManager = getSystemService(PowerManager.class);
++        if (Settings.Secure.getInt(
++                        getContentResolver(), Settings.Secure.DOUBLE_TAP_TO_WAKE, 0)
++                != 1) {
++            Settings.Secure.putInt(
++                    getContentResolver(), Settings.Secure.DOUBLE_TAP_TO_WAKE, 1);
++        }
          setContentView(R.layout.preview_layout);
          mRootView = findViewById(R.id.container_view);
          mTextureViewContainer = findViewById(R.id.texture_view_container);
-@@ -667,6 +762,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -667,11 +787,15 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          mToggleCameraButton = findViewById(R.id.toggle_camera_button);
          mZoomController = findViewById(R.id.zoom_ui_controller);
          mHighQualityToggleButton = findViewById(R.id.high_quality_button);
@@ -1690,7 +1716,13 @@ index 4e57a80..90e14dd 100644
  
          // Use "seamless" animation for rotations as we fix the UI relative to the device.
          // "seamless" will make the transition invisible to the users.
-@@ -689,14 +787,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+         WindowManager.LayoutParams windowAttrs = getWindow().getAttributes();
+         windowAttrs.rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS;
++        windowAttrs.userActivityTimeout = SCREEN_TIMEOUT_MS;
+         getWindow().setAttributes(windowAttrs);
+ 
+         mAccessibilityManager = getSystemService(AccessibilityManager.class);
+@@ -689,14 +813,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          // reverse-landscape or from portrait to reverse-portrait.
          mRootView.setOnApplyWindowInsetsListener((view, inset) -> {
              runOnUiThread(this::setupMainLayout);
@@ -1707,7 +1739,7 @@ index 4e57a80..90e14dd 100644
      }
  
      private Drawable createFocusIndicatorDrawable() {
-@@ -725,10 +819,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -725,10 +845,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          return new BitmapDrawable(getResources(), bitmap);
      }
  
@@ -1720,12 +1752,13 @@ index 4e57a80..90e14dd 100644
          window.setDecorFitsSystemWindows(false);
          WindowInsetsController controller = window.getInsetsController();
          if (controller != null) {
-@@ -741,31 +834,31 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -741,33 +860,49 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
      @Override
      public void onResume() {
          super.onResume();
 -        hideSystemUiAndActionBar();
 +        hideSystemUi();
++        resetScreenOffTimer();
          // When the screen is turned off and turned back on, the SurfaceTexture is already
          // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
          // a camera and start preview from here (otherwise, we wait until the surface is ready in
@@ -1756,6 +1789,20 @@ index 4e57a80..90e14dd 100644
 +        super.onWindowFocusChanged(hasFocus);
 +        if (hasFocus) {
 +            hideSystemUi();
++            resetScreenOffTimer();
++        }
++    }
++
++    @Override
++    public void onUserInteraction() {
++        super.onUserInteraction();
++        resetScreenOffTimer();
++    }
++
++    private void resetScreenOffTimer() {
++        mMainHandler.removeCallbacks(mTurnScreenOff);
++        if (!mDestroyed && !isFinishing()) {
++            mMainHandler.postDelayed(mTurnScreenOff, SCREEN_TIMEOUT_MS);
 +        }
 +    }
 +
@@ -1766,18 +1813,22 @@ index 4e57a80..90e14dd 100644
 +
      @Override
      public void onPause() {
++        mMainHandler.removeCallbacks(mTurnScreenOff);
          if (mWebcamController != null) {
-@@ -807,6 +900,9 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+             mWebcamController.removePreviewSurfaceTexture();
+             mWebcamController.setRotationUpdateListener(null);
+@@ -807,6 +942,10 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
  
      @Override
      public void onDestroy() {
 +        mDestroyed = true;
 +        mMainHandler.removeCallbacks(mStartAndBindWhenUnlocked);
 +        mMainHandler.removeCallbacks(mAttachServiceWhenReady);
++        mMainHandler.removeCallbacks(mTurnScreenOff);
          if (mAccessibilityManager != null) {
              mAccessibilityManager.removeAccessibilityServicesStateChangeListener(
                      mAccessibilityListener);
-@@ -814,10 +910,24 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
+@@ -814,10 +953,24 @@ public class DeviceAsWebcamPreview extends FragmentActivity {
          if (mWebcamController != null) {
              mWebcamController.setOnDestroyedCallback(null);
          }
@@ -1804,7 +1855,7 @@ index 4e57a80..90e14dd 100644
       * Returns {@code true} when the device has both available back and front cameras. Otherwise,
       * returns {@code false}.
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
-index c318d54..8034c04 100644
+index c318d54dce97d032408f34b57499fc8ea08db332..8034c04baaf1b49e1b80d78398472dae3e6b81e2 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/RotationProvider.java
 @@ -23,12 +23,14 @@ import android.hardware.camera2.CameraCharacteristics;
@@ -1987,7 +2038,7 @@ index c318d54..8034c04 100644
  }
 -
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
-index 9228411..85e64d3 100644
+index 9228411e16ca78bdd6d869f20ac6a6f83687e834..85e64d30b1babe0fb61c38fd790b8e783456f3af 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/WebcamControllerImpl.kt
 @@ -46,8 +46,21 @@ class WebcamControllerImpl(context: Context) : WebcamController() {
@@ -2014,7 +2065,7 @@ index 9228411..85e64d3 100644
  
      /**
 diff --git a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
-index eb853e1..492c928 100644
+index eb853e14ea2f899b95f3e69f33c3eae49f018069..492c92886598d14d461347aa671c613b77efd269 100644
 --- a/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
 +++ b/packages/services/DeviceAsWebcam/impl/src/com/android/deviceaswebcam/utils/UserPrefs.java
 @@ -31,8 +31,8 @@ public class UserPrefs {
@@ -2029,7 +2080,7 @@ index eb853e1..492c928 100644
          mPrefsEditor = mPrefs.edit();
      }
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Android.bp b/packages/services/DeviceAsWebcam/interface/jni/Android.bp
-index 25ec0e3..ffa2057 100644
+index 25ec0e3639b82832cfe3a97cffcd0b101d21f816..ffa205773ee8afaf8a957edb98f498378dfc6599 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Android.bp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Android.bp
 @@ -13,6 +13,7 @@ cc_library_shared {
@@ -2049,7 +2100,7 @@ index 25ec0e3..ffa2057 100644
      ],
      cflags: [
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp b/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
-index 3e2c1fa..75e08d8 100644
+index 3e2c1fae95038a02239f1d09bcf10036235890e5..75e08d827bc71b806158495793332f371633eb88 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Buffer.cpp
 @@ -17,6 +17,7 @@
@@ -2110,7 +2161,7 @@ index 3e2c1fa..75e08d8 100644
  }
  
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Buffer.h b/packages/services/DeviceAsWebcam/interface/jni/Buffer.h
-index e0459f3..bd09fa6 100644
+index e0459f386e5f7c034a1431cdb0bab2f438f87849..bd09fa6d7569584ca34a9a97dc0ba9fd120b46b9 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Buffer.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Buffer.h
 @@ -21,6 +21,7 @@
@@ -2139,7 +2190,7 @@ index e0459f3..bd09fa6 100644
      // We have multiple producer buffers so that skews between other producers being used by the
      // producer side - eg: buffer from camera doesn't get blocked from getting encoded while
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp
-index a6d83be..23ecbed 100644
+index a6d83be60e7c5cf60caf2bd41d6605c6b4435ec9..23ecbedc81efaf41b7235f2f0c8e1d666a95235e 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamNative.cpp
 @@ -21,6 +21,7 @@
@@ -2168,7 +2219,7 @@ index a6d83be..23ecbed 100644
 \ No newline at end of file
 +}  // namespace android
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
-index 2ef969d..002ba6e 100644
+index 2ef969dae054103413e8bf9d6e681a0ef82468d2..002ba6e9d6924daa74b496e2090548ca285d0f7c 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.cpp
 @@ -20,6 +20,7 @@
@@ -2378,7 +2429,7 @@ index 2ef969d..002ba6e 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
-index 2c2df66..3ee253f 100644
+index 2c2df66988c83a5efee9187234930a3bff3639fc..3ee253f575a31c15d17cc65c3e090971f514332f 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/DeviceAsWebcamServiceManager.h
 @@ -21,7 +21,6 @@
@@ -2408,7 +2459,7 @@ index 2c2df66..3ee253f 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp b/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
-index a3cddae..23e89db 100644
+index a3cddaecef295cec1ff3a28d528ad777830970c7..23e89db62e193995fe76fcd18e51c716d670435a 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Encoder.cpp
 @@ -20,44 +20,87 @@
@@ -2899,7 +2950,7 @@ index a3cddae..23e89db 100644
  
  void Encoder::encodeToYUYV(EncodeRequest& r) {
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/Encoder.h b/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
-index fe0d868..027f7ac 100644
+index fe0d868ff82cc109be70be2a3e8b84a9695ff914..027f7acf77ed02beddf8ddb650f83ddfab9aa7ee 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/Encoder.h
 @@ -17,6 +17,7 @@
@@ -2951,7 +3002,7 @@ index fe0d868..027f7ac 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
-index ab8fa5f..1cfa6f1 100644
+index ab8fa5f2504d75c700d3a3245d69fe2614deec52..1cfa6f1e6babd49cc49e60ecd36a1c339fb087f1 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.cpp
 @@ -46,15 +46,41 @@ void SdkFrameProvider::setStreamConfig() {
@@ -3055,7 +3106,7 @@ index ab8fa5f..1cfa6f1 100644
      }
  }
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
-index 27c1842..1992e6d 100644
+index 27c184201dce04a5d0b3ed4a867da80adeb77bb2..1992e6d7a06e6c9dd2a2e91b1514359ae9fbcdaf 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/SdkFrameProvider.h
 @@ -15,6 +15,7 @@
@@ -3092,7 +3143,7 @@ index 27c1842..1992e6d 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
-index 8aa9181..d9e5709 100644
+index 8aa918139a9bd2cbdfa2e2aadf28b434abd1c9b8..d9e57098e2d4b25c5af9f1db59de573d50141ef8 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.cpp
 @@ -14,9 +14,10 @@
@@ -4053,7 +4104,7 @@ index 8aa9181..d9e5709 100644
  
  }  // namespace webcam
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
-index b134398..1b8074c 100644
+index b1343986a734bf17e021687732cb84a6bcf47703..1b8074c399becbd027791d0a2e0302af41af810a 100644
 --- a/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UVCProvider.h
 @@ -25,9 +25,10 @@
@@ -4155,10 +4206,10 @@ index b134398..1b8074c 100644
  
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp
 new file mode 100644
-index 0000000..19945a3
+index 0000000000000000000000000000000000000000..ed08adfd7b053b26bfd486d8b5cbade266c24d4c
 --- /dev/null
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.cpp
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,342 @@
 +/*
 + * Copyright (C) 2026 CaCamOS
 + *
@@ -4219,6 +4270,87 @@ index 0000000..19945a3
 +    }
 +    return -1;
 +}
++
++class HostStreamState {
++  public:
++    explicit HostStreamState(const char* controlName) : mControlName(controlName) {}
++
++    ~HostStreamState() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        closeLocked();
++    }
++
++    bool isActive() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        if (mFallbackActive) {
++            return true;
++        }
++        if (!ensureOpenLocked()) {
++            return false;
++        }
++
++        const int value = mixer_ctl_get_value(mControl, 0);
++        if (value < 0) {
++            closeLocked();
++            return false;
++        }
++        return value != 0;
++    }
++
++    void reset() {
++        std::lock_guard<std::mutex> lock(mMutex);
++        closeLocked();
++        mFallbackActive = false;
++        mNextOpenAttempt = std::chrono::steady_clock::time_point::min();
++    }
++
++  private:
++    bool ensureOpenLocked() {
++        if (mMixer != nullptr) {
++            return true;
++        }
++
++        const auto now = std::chrono::steady_clock::now();
++        if (now < mNextOpenAttempt) {
++            return false;
++        }
++        mNextOpenAttempt = now + kOpenRetryDelay;
++
++        const int card = findUac2Card();
++        if (card < 0) {
++            return false;
++        }
++
++        mMixer = mixer_open(card);
++        if (mMixer == nullptr) {
++            return false;
++        }
++        mControl = mixer_get_ctl_by_name(mMixer, mControlName);
++        if (mControl == nullptr) {
++            ALOGW("UAC2 control '%s' is unavailable; keeping legacy always-on audio", mControlName);
++            closeLocked();
++            mFallbackActive = true;
++            return false;
++        }
++        return true;
++    }
++
++    void closeLocked() {
++        if (mMixer != nullptr) {
++            mixer_close(mMixer);
++        }
++        mMixer = nullptr;
++        mControl = nullptr;
++    }
++
++    const char* const mControlName;
++    std::mutex mMutex;
++    mixer* mMixer = nullptr;
++    mixer_ctl* mControl = nullptr;
++    bool mFallbackActive = false;
++    std::chrono::steady_clock::time_point mNextOpenAttempt =
++            std::chrono::steady_clock::time_point::min();
++};
 +
 +class PcmEndpoint {
 +  public:
@@ -4351,6 +4483,8 @@ index 0000000..19945a3
 +// receives USB OUT and is rendered by the telephone speakers.
 +PcmEndpoint gMicrophoneToHost(false, 1, "microphone");
 +PcmEndpoint gHostToSpeakers(true, 2, "speakers");
++HostStreamState gMicrophoneHostState("USB Microphone Active");
++HostStreamState gSpeakersHostState("USB Speakers Active");
 +
 +int transferDirectBuffer(JNIEnv* env, jobject buffer, jint offset, jint length,
 +                         PcmEndpoint& endpoint) {
@@ -4372,9 +4506,27 @@ index 0000000..19945a3
 +    return transferDirectBuffer(env, buffer, offset, length, gHostToSpeakers);
 +}
 +
++jboolean nativeIsMicrophoneActive(JNIEnv*, jclass) {
++    return gMicrophoneHostState.isActive() ? JNI_TRUE : JNI_FALSE;
++}
++
++jboolean nativeAreSpeakersActive(JNIEnv*, jclass) {
++    return gSpeakersHostState.isActive() ? JNI_TRUE : JNI_FALSE;
++}
++
++void nativeResetMicrophone(JNIEnv*, jclass) {
++    gMicrophoneToHost.reset();
++}
++
++void nativeResetSpeakers(JNIEnv*, jclass) {
++    gHostToSpeakers.reset();
++}
++
 +void nativeReset(JNIEnv*, jclass) {
 +    gMicrophoneToHost.reset();
 +    gHostToSpeakers.reset();
++    gMicrophoneHostState.reset();
++    gSpeakersHostState.reset();
 +}
 +
 +const JNINativeMethod kMethods[] = {
@@ -4382,6 +4534,12 @@ index 0000000..19945a3
 +         reinterpret_cast<void*>(nativeWriteMicrophone)},
 +        {"nativeReadSpeakers", "(Ljava/nio/ByteBuffer;II)I",
 +         reinterpret_cast<void*>(nativeReadSpeakers)},
++        {"nativeIsMicrophoneActive", "()Z",
++         reinterpret_cast<void*>(nativeIsMicrophoneActive)},
++        {"nativeAreSpeakersActive", "()Z",
++         reinterpret_cast<void*>(nativeAreSpeakersActive)},
++        {"nativeResetMicrophone", "()V", reinterpret_cast<void*>(nativeResetMicrophone)},
++        {"nativeResetSpeakers", "()V", reinterpret_cast<void*>(nativeResetSpeakers)},
 +        {"nativeReset", "()V", reinterpret_cast<void*>(nativeReset)},
 +};
 +
@@ -4396,7 +4554,7 @@ index 0000000..19945a3
 +}  // namespace android
 diff --git a/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.h b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.h
 new file mode 100644
-index 0000000..721cc8c
+index 0000000000000000000000000000000000000000..721cc8ce573d09ae039c6cfa5fc176975602e81b
 --- /dev/null
 +++ b/packages/services/DeviceAsWebcam/interface/jni/UsbAudioBridge.h
 @@ -0,0 +1,27 @@
@@ -4428,7 +4586,7 @@ index 0000000..721cc8c
 +}  // namespace webcam
 +}  // namespace android
 diff --git a/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml b/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml
-index c97ac8f..af5b771 100644
+index c97ac8f21afbfdda5cdcbf627bd6daf5df5018be..af5b771363d8fc80cec686ef866e7c9070335289 100644
 --- a/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml
 +++ b/packages/services/DeviceAsWebcam/interface/res/values-fr/strings.xml
 @@ -19,5 +19,5 @@
@@ -4439,7 +4597,7 @@ index c97ac8f..af5b771 100644
 +    <string name="notif_desc" msgid="2524105328454274946">"Appuyez pour revenir à la webcam"</string>
  </resources>
 diff --git a/packages/services/DeviceAsWebcam/interface/res/values/strings.xml b/packages/services/DeviceAsWebcam/interface/res/values/strings.xml
-index 399791e..3da1f43 100644
+index 399791ed9f4fca7e76c94446c5b1a9fae9961177..3da1f43fd8aa1925e505f73c6bb632fc4bf8de60 100644
 --- a/packages/services/DeviceAsWebcam/interface/res/values/strings.xml
 +++ b/packages/services/DeviceAsWebcam/interface/res/values/strings.xml
 @@ -19,5 +19,5 @@
@@ -4450,7 +4608,7 @@ index 399791e..3da1f43 100644
 +    <string name="notif_desc">Tap to return to the webcam</string>
  </resources>
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
-index 2362b8d..a450e44 100644
+index 2362b8d7e24b964a655b1cb6c209de6d50c1a681..a450e44a137ce544112034a9ea0fdcf72491bcf9 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamFgService.java
 @@ -26,6 +26,13 @@ import android.content.Context;
@@ -5076,7 +5234,7 @@ index 2362b8d..a450e44 100644
 +    }
 +}
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
-index 15fd9f6..981c712 100644
+index 15fd9f65d35857fb113eea9b6896f27fd9264c76..981c712dfc6f4ad8680bbb77b1faf55ba7f5922a 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/DeviceAsWebcamReceiver.java
 @@ -21,6 +21,7 @@ import android.content.Context;
@@ -5160,10 +5318,10 @@ index 15fd9f6..981c712 100644
  
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java
 new file mode 100644
-index 0000000..5349a2f
+index 0000000000000000000000000000000000000000..bbfc342c6c5c7fec0c2b936394ccfd20412a7fb5
 --- /dev/null
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/UsbAudioBridge.java
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,387 @@
 +/*
 + * Copyright (C) 2026 CaCamOS
 + *
@@ -5207,6 +5365,7 @@ index 0000000..5349a2f
 +  private static final int MICROPHONE_CHANNELS = 1;
 +  private static final int SPEAKER_CHANNELS = 2;
 +  private static final int RETRY_DELAY_MS = 1000;
++  private static final int HOST_STREAM_POLL_INTERVAL_MS = 250;
 +
 +  private final Context mContext;
 +  private final AtomicBoolean mRunning = new AtomicBoolean();
@@ -5260,6 +5419,11 @@ index 0000000..5349a2f
 +    final ByteBuffer buffer = ByteBuffer.allocateDirect(chunkBytes).order(ByteOrder.nativeOrder());
 +
 +    while (mRunning.get()) {
++      if (!nativeIsMicrophoneActive()) {
++        sleepForHostStatePoll();
++        continue;
++      }
++
 +      AudioRecord record = createAudioRecord(chunkBytes);
 +      if (record == null) {
 +        sleepBeforeRetry();
@@ -5279,9 +5443,9 @@ index 0000000..5349a2f
 +        if (record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
 +          throw new IllegalStateException("microphone did not enter recording state");
 +        }
-+        Log.i(TAG, "Telephone microphone capture active");
++        Log.i(TAG, "Telephone microphone capture active for USB host");
 +
-+        while (mRunning.get()) {
++        while (mRunning.get() && nativeIsMicrophoneActive()) {
 +          buffer.clear();
 +          int bytesRead = record.read(buffer, chunkBytes, AudioRecord.READ_BLOCKING);
 +          if (bytesRead <= 0) {
@@ -5312,8 +5476,9 @@ index 0000000..5349a2f
 +            record.release();
 +          }
 +        }
++        nativeResetMicrophone();
 +      }
-+      sleepBeforeRetry();
++      sleepForHostStatePoll();
 +    }
 +  }
 +
@@ -5323,6 +5488,11 @@ index 0000000..5349a2f
 +    final ByteBuffer buffer = ByteBuffer.allocateDirect(chunkBytes).order(ByteOrder.nativeOrder());
 +
 +    while (mRunning.get()) {
++      if (!nativeAreSpeakersActive()) {
++        sleepForHostStatePoll();
++        continue;
++      }
++
 +      AudioTrack track = createAudioTrack(chunkBytes);
 +      if (track == null) {
 +        sleepBeforeRetry();
@@ -5339,9 +5509,9 @@ index 0000000..5349a2f
 +
 +      try {
 +        track.play();
-+        Log.i(TAG, "Telephone speaker playback active");
++        Log.i(TAG, "Telephone speaker playback active for USB host");
 +
-+        while (mRunning.get()) {
++        while (mRunning.get() && nativeAreSpeakersActive()) {
 +          buffer.clear();
 +          int bytesRead = nativeReadSpeakers(buffer, 0, chunkBytes);
 +          if (bytesRead <= 0) {
@@ -5373,8 +5543,9 @@ index 0000000..5349a2f
 +            track.release();
 +          }
 +        }
++        nativeResetSpeakers();
 +      }
-+      sleepBeforeRetry();
++      sleepForHostStatePoll();
 +    }
 +  }
 +
@@ -5507,6 +5678,12 @@ index 0000000..5349a2f
 +    }
 +  }
 +
++  private void sleepForHostStatePoll() {
++    if (mRunning.get()) {
++      SystemClock.sleep(HOST_STREAM_POLL_INTERVAL_MS);
++    }
++  }
++
 +  private static void joinQuietly(Thread thread) {
 +    if (thread == null) {
 +      return;
@@ -5522,10 +5699,18 @@ index 0000000..5349a2f
 +
 +  private static native int nativeReadSpeakers(ByteBuffer buffer, int offset, int length);
 +
++  private static native boolean nativeIsMicrophoneActive();
++
++  private static native boolean nativeAreSpeakersActive();
++
++  private static native void nativeResetMicrophone();
++
++  private static native void nativeResetSpeakers();
++
 +  private static native void nativeReset();
 +}
 diff --git a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
-index aaf540b..4573258 100644
+index aaf540b212f0e73d929f1dd543579aec07d9765a..4573258a17a05a0388b1ca2a10370b80e5a86aec 100644
 --- a/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
 +++ b/packages/services/DeviceAsWebcam/interface/src/com/android/deviceaswebcam/WebcamController.java
 @@ -46,8 +46,8 @@ public abstract class WebcamController {

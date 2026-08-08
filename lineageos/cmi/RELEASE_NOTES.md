@@ -1,15 +1,50 @@
-# CaCamOS 1.2.0 for Xiaomi Mi 10 Pro (`cmi`)
+# CaCamOS for Xiaomi Mi 10 Pro (`cmi`)
+
+## 1.2.1
+
+- Explicitly puts the display to sleep after 30 seconds without interaction,
+  including when Android's ordinary window timeout is held awake elsewhere.
+- Keeps double-tap-to-wake enabled so the webcam interface can be restored
+  without using a physical button.
+- Releases the local camera preview while the display is off. An open host UVC
+  stream remains active; with no host stream, the camera can become idle too.
+- Adds read-only ALSA controls for the host microphone and speaker stream
+  states.
+- Starts Android microphone capture and speaker playback only while the host
+  has opened the corresponding UAC2 endpoint. This removes the permanent
+  `AudioIn` wake lock present in 1.2.0 while the microphone is unused.
+- Keeps the standard UVC/UAC2 identity, resolutions, frame rates and audio
+  formats from 1.2.0 unchanged.
+- Keeps recovery ADB available on appliance builds and no longer aborts a
+  sideload when the optional `/cache` partition is unavailable or damaged.
+
+Signed OTA:
+
+```text
+lineage-23.2-20260803-UNOFFICIAL-CACAMOS-1.2.1-cmi.zip
+size=1422040935
+sha256=7f82397716a3138699764ba072446977f45cdda893d9c4aa7419659268ccc003
+build_incremental=1785781560
+```
+
+Physical qualification on the MI10 Pro passed the 30-second display sleep,
+double-tap wake, idle camera and audio shutdown, 2,400-frame UVC/display-off
+run, 60-second 720p30 integrity run, 1080p30 capture, 20 rapid UVC reopen
+cycles, and simultaneous 720p30 microphone/speaker round trip. The complete
+record is in [`V1_2_1_ACCEPTANCE.md`](V1_2_1_ACCEPTANCE.md).
+
+## 1.2.0
 
 Dedicated webcam OS release for LineageOS 23.2 / Android 16.
 
-## Clean Installation Required
+### Clean Installation Required
 
 On the first move from LineageOS or CaCamOS 0.x, use **Format data / factory
 reset** in Lineage Recovery. ADB sideload updates the OS partitions but does
 not erase `/data`. Skipping the format preserves previous applications,
 accounts, credentials and notifications.
 
-## Included
+### Included
 
 - CaCamOS appliance branding and boot animation.
 - Automatic startup in the persistent DeviceAsWebcam preview.
@@ -29,7 +64,7 @@ accounts, credentials and notifications.
 - A controlled ten-worker build profile that leaves six cores available on the
   sixteen-core host.
 
-## Validation
+### Validation
 
 - Every patch recreates the audited local Android worktrees exactly.
 - The complete source verifier passes for `cmi`.
@@ -58,11 +93,11 @@ accounts, credentials and notifications.
   embedded in the OTA, so later CaCamOS packages use the matching trust store.
 - Physical Windows interoperability on this MI10 Pro remains to be recorded.
 
-## Previous 0.5.3 Addon
+### Previous 0.5.3 Addon
 
 Xiaomi Mi 10 Pro (`cmi`) LineageOS integration for standard USB webcam mode.
 
-### Included
+#### Included
 
 - Enables Android/LineageOS `DeviceAsWebcam`.
 - Advertises UVC support at boot with `ro.usb.uvc.enabled=true`.
@@ -86,13 +121,13 @@ Xiaomi Mi 10 Pro (`cmi`) LineageOS integration for standard USB webcam mode.
 - Adds `CURRENT_SOURCE_PREFLIGHT.md` with current source-side proof and the
   remaining runtime proof steps.
 
-### Expected Result
+#### Expected Result
 
 After building and flashing a LineageOS image with this patch, the Mi 10 Pro can
 be selected by a PC as a regular USB Video Class webcam. OBS should use it as a
 normal Video Capture Device, without BGOBS and without network streaming.
 
-### Known Limits
+#### Known Limits
 
 - Not a flashable ROM ZIP yet; this is a source-tree addon patch.
 - The stock `23.2-20260626-NIGHTLY-cmi` still has

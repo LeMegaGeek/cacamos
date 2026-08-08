@@ -614,6 +614,9 @@ for marker in (
     b"ro.usb.audio_gadget.enabled",
     b"Telephone microphone capture active",
     b"Telephone speaker playback active",
+    b"preview-screen-timeout",
+    b"goToSleep",
+    b"onUserInteraction",
     b"/cache/recovery/cacamos-boot-state.log",
 ):
     if marker not in dex:
@@ -672,6 +675,7 @@ expected = {
     "android.permission.FOREGROUND_SERVICE_MICROPHONE",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.WRITE_SECURE_SETTINGS",
+    "android.permission.DEVICE_POWER",
     "android.permission.POST_NOTIFICATIONS",
     "com.android.DeviceAsWebcam.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
 }
